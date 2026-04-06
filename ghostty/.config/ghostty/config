@@ -28,5 +28,8 @@ cursor-style-blink = true
 bold-is-bright = false
 adjust-cell-height = 0
 
+# ── Notifications ──────────────────────────────────────────
+desktop-notifications = true
+
 # ── Performance ────────────────────────────────────────────
 gtk-single-instance = true
