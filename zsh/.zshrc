@@ -71,6 +71,9 @@ command -v ng &>/dev/null && source <(ng completion script)
 # Dart CLI completion
 [ -f "$HOME/.dart-cli-completion/zsh-config.zsh" ] && . "$HOME/.dart-cli-completion/zsh-config.zsh"
 
+# ── Yabai (HEAD build uses com.asmvik label, plist uses com.koekeishiya) ──
+alias yabai-restart='launchctl kickstart -k gui/$UID/com.koekeishiya.yabai && sleep 2 && unset TERMINFO && sudo yabai --load-sa'
+
 # ── Custom Scripts ─────────────────────────────────────────
 alias ctx='$HOME/Development/scripts/contextify.sh'
 alias modgen='python3 $HOME/Development/scripts/nestjs-modgen.py'
