@@ -13,12 +13,13 @@ brew "felixkratz/formulae/borders"
 brew "starship"
 brew "zoxide"
 brew "fzf"
+brew "stow"                    # dotfiles symlink manager
 
 # ── Modern CLI ─────────────────────────────────────────────
 brew "bat"                     # cat
 brew "eza"                     # ls
 brew "ripgrep"                 # grep
-brew "fd"                      # find (not currently installed)
+brew "fd"                      # find
 brew "jq"                      # json
 brew "git-delta"               # diff
 brew "lazygit"                 # git tui
@@ -54,8 +55,6 @@ brew "bitwarden-cli"
 
 # ── Casks ──────────────────────────────────────────────────
 cask "ghostty"
-cask "wezterm"
-cask "karabiner-elements"
 cask "docker-desktop"
 cask "dbeaver-community"
 cask "mitmproxy"

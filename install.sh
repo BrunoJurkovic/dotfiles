@@ -13,7 +13,6 @@ REPO="https://github.com/BrunoJurkovic/dotfiles.git"
 # ── Colors ─────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 DIM='\033[2m'
@@ -86,10 +85,36 @@ if ! command -v stow &>/dev/null; then
 fi
 ok "available"
 
+# ── Oh My Zsh ─────────────────────────────────────────────
+# Must install BEFORE stowing — OMZ creates its own .zshrc which we replace
+step "Oh My Zsh"
+if [ -d "$HOME/.oh-my-zsh" ]; then
+  ok "already installed"
+else
+  info "installing..."
+  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+  ok "installed"
+fi
+
+# Plugins (non-fatal — network issues shouldn't kill the install)
+ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+
+if [ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]; then
+  git clone https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions" && ok "zsh-autosuggestions" || warn "zsh-autosuggestions clone failed"
+else
+  skip "zsh-autosuggestions (exists)"
+fi
+
+if [ ! -d "$ZSH_CUSTOM/plugins/fast-syntax-highlighting" ]; then
+  git clone https://github.com/zdharma-continuum/fast-syntax-highlighting "$ZSH_CUSTOM/plugins/fast-syntax-highlighting" && ok "fast-syntax-highlighting" || warn "fast-syntax-highlighting clone failed"
+else
+  skip "fast-syntax-highlighting (exists)"
+fi
+
 # ── Stow Packages ─────────────────────────────────────────
 step "Symlinking configurations"
 
-# Remove OMZ-generated .zshrc if it's not already a symlink (blocks stow)
+# Remove OMZ-generated .zshrc if it's not already our symlink
 if [ -f "$HOME/.zshrc" ] && [ ! -L "$HOME/.zshrc" ]; then
   mv "$HOME/.zshrc" "$HOME/.zshrc.omz-backup"
   info "backed up OMZ .zshrc to .zshrc.omz-backup"
@@ -127,33 +152,6 @@ for plist in "$DOTFILES/launchagents/"*.plist; do
   sed "s|__HOME__|$HOME|g" "$plist" > "$HOME/Library/LaunchAgents/$name"
   ok "$name"
 done
-
-# ── Oh My Zsh ─────────────────────────────────────────────
-step "Oh My Zsh"
-if [ -d "$HOME/.oh-my-zsh" ]; then
-  ok "already installed"
-else
-  info "installing..."
-  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-  ok "installed"
-fi
-
-# Plugins
-ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
-
-if [ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]; then
-  git clone https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
-  ok "zsh-autosuggestions"
-else
-  skip "zsh-autosuggestions (exists)"
-fi
-
-if [ ! -d "$ZSH_CUSTOM/plugins/fast-syntax-highlighting" ]; then
-  git clone https://github.com/zdharma-continuum/fast-syntax-highlighting "$ZSH_CUSTOM/plugins/fast-syntax-highlighting"
-  ok "fast-syntax-highlighting"
-else
-  skip "fast-syntax-highlighting (exists)"
-fi
 
 # ── Screenshots Directory ─────────────────────────────────
 mkdir -p "$HOME/Pictures/Screenshots"
