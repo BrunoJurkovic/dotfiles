@@ -1,0 +1,11 @@
+#!/bin/bash
+
+sketchybar --add item battery right \
+  --set battery \
+    update_freq=180 \
+    label.font="$NERD_FONT_MONO:Regular:11.0" \
+    padding_left=2 \
+    padding_right=2 \
+    script="$PLUGIN_DIR/battery.sh" \
+    click_script="open x-apple.systempreferences:com.apple.preference.battery" \
+  --subscribe battery system_woke power_source_change

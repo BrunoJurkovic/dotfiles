@@ -1,0 +1,12 @@
+\.git
+\.gitignore
+README\.md
+LICENSE
+Brewfile
+Makefile
+install\.sh
+macos
+launchagents
+scripts
+\.stow-local-ignore
+\.DS_Store

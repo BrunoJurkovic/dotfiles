@@ -1,0 +1,40 @@
+{
+  "Import Material App": {
+    "prefix": "impma",
+    "body": [
+      "import 'package:flutter/material.dart';"
+    ],
+    "description": "Import Flutter Material package"
+  },
+  "Import Widgetbook": {
+    "prefix": "impwb",
+    "body": [
+      "import 'package:widgetbook_annotation/widgetbook_annotation.dart' as widgetbook;"
+    ],
+    "description": "Import Widgetbook annotations with alias"
+  },
+  "Widgetbook Use Case": {
+    "prefix": "wbuc",
+    "body": [
+      "@widgetbook.UseCase(name: '${1:UseCaseName}', type: ${2:WidgetType})",
+      "Widget ${3:useCaseFunction}(BuildContext context) {",
+      "  return ${2:WidgetType}(${4});",
+      "}"
+    ],
+    "description": "Create a Widgetbook use case with build method and return statement"
+  },
+  "Stateless Widget": {
+    "prefix": "stw",
+    "body": [
+      "class ${1:WidgetName} extends StatelessWidget {",
+      "  const ${1:WidgetName}({super.key});",
+      "",
+      "  @override",
+      "  Widget build(BuildContext context) {",
+      "    return ${2:Container()};",
+      "  }",
+      "}"
+    ],
+    "description": "Create a Stateless Widget"
+  }
+}
