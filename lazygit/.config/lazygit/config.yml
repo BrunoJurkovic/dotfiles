@@ -1,0 +1,29 @@
+gui:
+  nerdFontsVersion: "3"
+  showBottomLine: false
+  showPanelJumps: false
+  theme:
+    activeBorderColor:
+      - "#8aadf4" # blue
+      - bold
+    inactiveBorderColor:
+      - "#a5adcb" # subtext0
+    optionsTextColor:
+      - "#8aadf4" # blue
+    selectedLineBgColor:
+      - "#363a4f" # surface0
+    cherryPickedCommitBgColor:
+      - "#494d64" # surface1
+    cherryPickedCommitFgColor:
+      - "#8aadf4" # blue
+    unstagedChangesColor:
+      - "#ed8796" # red
+    defaultFgColor:
+      - "#cad3f5" # text
+    searchingActiveBorderColor:
+      - "#eed49f" # yellow
+git:
+  paging:
+    colorArg: always
+    pager: delta --dark --paging=never
+  branchLogCmd: git log --graph --color=always --abbrev-commit --decorate --date=relative --pretty=medium {{branchName}} --

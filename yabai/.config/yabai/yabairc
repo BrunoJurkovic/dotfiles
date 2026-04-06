@@ -57,6 +57,8 @@ yabai -m rule --add app="Activity Monitor"   manage=off
 # ── Sketchybar Signals ────────────────────────────────────
 yabai -m signal --add event=space_changed \
     action="sketchybar --trigger space_change FOCUSED_SPACE=\$YABAI_SPACE_ID"
+yabai -m signal --add event=space_changed \
+    action="~/.config/yabai/border_color.sh"
 yabai -m signal --add event=window_focused \
     action="sketchybar --trigger window_focus"
 yabai -m signal --add event=window_created \
@@ -93,5 +95,8 @@ pgrep -x "Discord" > /dev/null || open -a "Discord"
 yabai -m signal --add event=display_added action="~/.config/yabai/display_setup.sh"
 yabai -m signal --add event=display_removed action="~/.config/yabai/display_setup.sh"
 yabai -m signal --add event=system_woke action="~/.config/yabai/display_setup.sh"
+
+# ── Initial Border Color ──────────────────────────────────
+~/.config/yabai/border_color.sh
 
 echo "yabai configuration loaded."

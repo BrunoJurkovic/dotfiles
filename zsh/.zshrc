@@ -1,4 +1,5 @@
 # ── Path ───────────────────────────────────────────────────
+typeset -U PATH  # deduplicate PATH entries
 export PATH="$HOME/.local/bin:$HOME/bin:/usr/local/bin:$PATH"
 export PATH="$PATH:$HOME/fvm/default/bin"
 export PATH="$PATH:$HOME/.pub-cache/bin"
@@ -46,24 +47,11 @@ command -v starship &>/dev/null && eval "$(starship init zsh)"
 # fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh || { command -v fzf &>/dev/null && source <(fzf --zsh); }
 
-# zoxide (replaces cd)
-command -v zoxide &>/dev/null && eval "$(zoxide init zsh --cmd cd)"
-
-# mise (tool version manager)
+# mise (tool version manager — manages node, bun, python, etc.)
 command -v mise &>/dev/null && eval "$(mise activate zsh)"
 
 # wtp (worktree plus)
 command -v wtp &>/dev/null && eval "$(wtp shell-init zsh)"
-
-# nvm
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
-
-# bun
-export BUN_INSTALL="$HOME/.bun"
-[ -s "$BUN_INSTALL/_bun" ] && source "$BUN_INSTALL/_bun"
-[ -d "$BUN_INSTALL/bin" ] && export PATH="$BUN_INSTALL/bin:$PATH"
 
 # Angular CLI (only if installed)
 command -v ng &>/dev/null && source <(ng completion script)
@@ -80,6 +68,11 @@ alias modgen='python3 $HOME/Development/scripts/nestjs-modgen.py'
 alias work='$HOME/Development/scripts/tmux-work.sh'
 
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000
+export RIPGREP_CONFIG_PATH="$HOME/.ripgreprc"
+
+# zoxide (replaces cd) — must be last to avoid chpwd_functions being overwritten
+export _ZO_DOCTOR=0
+command -v zoxide &>/dev/null && eval "$(zoxide init zsh --cmd cd)"
 
 # ── Fastfetch on new terminal ─────────────────────────────
 command -v fastfetch &>/dev/null && fastfetch

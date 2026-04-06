@@ -1,0 +1,11 @@
+--smart-case
+--hidden
+--glob=!.git
+--glob=!node_modules
+--glob=!.dart_tool
+--glob=!build
+--glob=!.build
+--glob=!*.lock
+--glob=!.pub-cache
+--max-columns=200
+--max-columns-preview

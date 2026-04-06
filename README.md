@@ -62,7 +62,7 @@ The core of this setup is a **BSP tiling window manager** that assigns apps to l
 | [yabai](https://github.com/koekeishiya/yabai) | BSP tiling WM with scripting addition | [`yabai/`](yabai/) |
 | [skhd](https://github.com/koekeishiya/skhd) | Hotkey daemon &mdash; all alt-based | [`skhd/`](skhd/) |
 | [SketchyBar](https://github.com/FelixKratz/SketchyBar) | Status bar with per-space accent colors | [`sketchybar/`](sketchybar/) |
-| [JankyBorders](https://github.com/FelixKratz/JankyBorders) | Glow borders on active window | [`launchagents/`](launchagents/) |
+| [JankyBorders](https://github.com/FelixKratz/JankyBorders) | Glow borders &mdash; color matches active space | [`launchagents/`](launchagents/) |
 | [instantspaces](https://github.com/flawnn/instantspaces) | Eliminates space-switching animation | [`launchagents/`](launchagents/) |
 
 All five run as LaunchAgents and start automatically on login.
@@ -216,7 +216,7 @@ Directory (blue Powerline), git branch/status, command duration, and time on lin
 | `lt` | `eza --tree --level=2` |
 | `cat` | `bat --style=plain` |
 
-**Tool integrations** (all guarded with `command -v` checks): Starship, fzf, zoxide, mise, nvm, bun.
+**Tool integrations** (all guarded with `command -v` checks): Starship, fzf, zoxide, [mise](https://mise.jdx.dev/) (manages Node, Bun, Python).
 
 `fastfetch` runs on every new terminal with a custom ASCII logo in a 5-color blue-to-mauve gradient.
 
@@ -299,6 +299,8 @@ Config in [`git/`](git/). Uses [delta](https://github.com/dandavison/delta) as t
 
 **Credentials:** Delegated to GitHub CLI (`gh auth git-credential`).
 
+**Global gitattributes:** Marks images, fonts, lock files, and Xcode project files as binary for cleaner diffs.
+
 ---
 
 ## Catppuccin Macchiato
@@ -378,13 +380,13 @@ Blue       #8aadf4    Lavender  #b7bdf8    Text      #cad3f5
 
 **Window management:** yabai, skhd, sketchybar, borders
 
-**Shell & prompt:** starship, zoxide, fzf, stow
+**Shell & prompt:** starship, zoxide, fzf, stow, mise
 
 **Modern CLI:** bat, eza, ripgrep, fd, jq, delta, lazygit, btop, fastfetch, yazi, tailspin
 
 **Editors:** neovim
 
-**Dev tools:** gh, go, rust, node@22, pipx, yarn, fvm, cocoapods, docker-compose
+**Dev tools:** gh, go, rust, pipx, fvm, cocoapods, docker-compose
 
 **Infra:** doctl (DigitalOcean), flyctl (Fly.io), doppler (secrets management)
 
@@ -409,12 +411,15 @@ Blue       #8aadf4    Lavender  #b7bdf8    Text      #cad3f5
 ├── fastfetch/          # System info with custom 5-color ASCII logo
 ├── gh/                 # GitHub CLI config
 ├── ghostty/            # Terminal (GeistMono, 95% opacity, frameless)
-├── git/                # Delta pager, conditional work email, global ignore
+├── git/                # Delta pager, conditional work email, global ignore + attributes
+├── lazygit/            # Git TUI config + Catppuccin theme
+├── mise/               # Tool version manager (Node, Bun, Python)
 ├── nvim/               # Neovim (Kickstart + Lazy, 35+ plugins)
+├── ripgrep/            # Smart defaults for rg (smart-case, hidden, excludes)
 ├── sketchybar/         # Status bar items, plugins, per-space colors
 ├── skhd/               # Hotkey definitions + service mode
 ├── starship/           # Two-line prompt with Catppuccin palette
-├── yabai/              # Tiling WM + display setup + space management
+├── yabai/              # Tiling WM + display setup + space management + border colors
 ├── yazi/               # File manager + Catppuccin flavor
 ├── zsh/                # Shell config, aliases, plugin setup
 ├── launchagents/       # Plist files for all 5 services
@@ -437,6 +442,8 @@ Blue       #8aadf4    Lavender  #b7bdf8    Text      #cad3f5
 | `make agents` | Install LaunchAgent plists |
 | `make update` | `git pull --rebase` + re-stow |
 | `make clean` | Remove broken symlinks in `$HOME` |
+| `make doctor` | Check that all expected tools are installed |
+| `make test` | Validate zsh syntax and stow link integrity |
 
 ## Requirements
 

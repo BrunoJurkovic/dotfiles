@@ -134,6 +134,9 @@ STOW_PACKAGES=(
   fastfetch
   ghostty
   gh
+  lazygit
+  ripgrep
+  mise
 )
 
 for pkg in "${STOW_PACKAGES[@]}"; do

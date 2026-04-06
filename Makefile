@@ -1,5 +1,5 @@
 DOTFILES := $(shell pwd)
-STOW_PACKAGES := yabai skhd sketchybar starship git zsh nvim yazi bat btop fastfetch ghostty gh
+STOW_PACKAGES := yabai skhd sketchybar starship git zsh nvim yazi bat btop fastfetch ghostty gh lazygit ripgrep mise
 
 .PHONY: all install stow unstow update macos brew clean help
 
@@ -47,6 +47,31 @@ agents: ## Copy LaunchAgents (substitutes __HOME__ with actual path)
 
 clean: ## Remove broken symlinks in ~
 	@find $(HOME) -maxdepth 3 -type l ! -exec test -e {} \; -print -delete 2>/dev/null || true
+
+doctor: ## Check that all expected tools are installed
+	@echo "Checking tools..."
+	@fail=0; \
+	for cmd in yabai skhd sketchybar borders bat eza rg fd zoxide fzf delta lazygit btop nvim starship mise ghostty gh stow jq; do \
+		if command -v $$cmd >/dev/null 2>&1; then \
+			printf "  \033[32m✓\033[0m %s\n" "$$cmd"; \
+		else \
+			printf "  \033[31m✗\033[0m %s (missing)\n" "$$cmd"; \
+			fail=1; \
+		fi; \
+	done; \
+	echo ""; \
+	if [ "$$fail" = "1" ]; then echo "Run 'make brew' to install missing tools."; fi
+
+test: ## Validate configs (zsh syntax, stow links)
+	@echo "Checking zsh syntax..."
+	@zsh -n $(DOTFILES)/zsh/.zshrc && echo "  zsh: ok" || echo "  zsh: FAIL"
+	@echo "Checking stow links..."
+	@broken=0; \
+	for pkg in $(STOW_PACKAGES); do \
+		stow -d $(DOTFILES) -t $(HOME) --no-folding -n $$pkg 2>&1 | grep -q "conflict" && \
+			{ echo "  $$pkg: conflict"; broken=1; } || echo "  $$pkg: ok"; \
+	done; \
+	[ "$$broken" = "0" ] && echo "All checks passed."
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_%/-]+:.*## ' Makefile | sort | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'

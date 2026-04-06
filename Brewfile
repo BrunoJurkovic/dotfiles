@@ -14,6 +14,7 @@ brew "starship"
 brew "zoxide"
 brew "fzf"
 brew "stow"                    # dotfiles symlink manager
+brew "mise"                    # tool version manager (node, bun, python, etc.)
 
 # ── Modern CLI ─────────────────────────────────────────────
 brew "bat"                     # cat
@@ -35,9 +36,7 @@ brew "neovim"
 brew "gh"                      # github cli
 brew "go"
 brew "rust"
-brew "node@22"
 brew "pipx"
-brew "yarn"
 brew "leoafarias/fvm/fvm"      # flutter version manager
 brew "cocoapods"
 
