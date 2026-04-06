@@ -12,6 +12,12 @@
 
 </div>
 
+<br>
+
+<p align="center">
+  <img src="assets/screenshot.png" alt="Desktop screenshot — yazi, neovim, btop, sketchybar" width="840" />
+</p>
+
 ---
 
 ## Quick Start
