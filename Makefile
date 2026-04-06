@@ -1,5 +1,5 @@
 DOTFILES := $(shell pwd)
-STOW_PACKAGES := yabai skhd sketchybar starship git zsh nvim yazi bat btop fastfetch gh
+STOW_PACKAGES := yabai skhd sketchybar starship git zsh nvim yazi bat btop fastfetch ghostty gh
 
 .PHONY: all install stow unstow update macos brew clean help
 

@@ -70,7 +70,7 @@ make install
 |------|--------|-------------|
 | [zsh](https://www.zsh.org/) + [Oh My Zsh](https://ohmyz.sh/) | [`zsh/`](zsh/) | Shell with autosuggestions + syntax highlighting |
 | [Starship](https://starship.rs/) | [`starship/`](starship/) | Minimal prompt with git integration |
-| [Ghostty](https://ghostty.org/) | - | GPU-accelerated terminal |
+| [Ghostty](https://ghostty.org/) | [`ghostty/`](ghostty/) | GPU-accelerated terminal |
 
 ### CLI Replacements
 
@@ -123,7 +123,8 @@ Per-space accent colors in SketchyBar:
 ├── btop/               # System monitor + theme
 ├── fastfetch/          # System info with custom logo
 ├── gh/                 # GitHub CLI config
-├── git/                # Git config + delta + global ignore
+├── ghostty/            # Ghostty terminal config
+├── git/                # Git config + delta + conditional work email
 ├── nvim/               # Neovim (Kickstart-based)
 ├── sketchybar/         # Status bar items + plugins
 ├── skhd/               # Hotkey definitions

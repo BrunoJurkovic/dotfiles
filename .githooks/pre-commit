@@ -40,24 +40,24 @@ SKIP_PATTERN='(\.png|\.jpg|\.jpeg|\.gif|\.ico|\.woff|\.ttf|\.lock|lazy-lock\.jso
 
 echo "Scanning for secrets and personal data..."
 
-STAGED=$(git diff --cached --name-only --diff-filter=ACM)
-
-for file in $STAGED; do
+git diff --cached --name-only --diff-filter=ACM | while IFS= read -r file; do
   # Skip binary/lock files
   [[ "$file" =~ $SKIP_PATTERN ]] && continue
 
-  # Skip this hook itself
+  # Skip files that intentionally contain personal/work data
   [[ "$file" == ".githooks/pre-commit" ]] && continue
+  [[ "$file" == "git/.config/git/work" ]] && continue
 
   for pattern in "${PATTERNS[@]}"; do
     if git show ":$file" 2>/dev/null | grep -qEi "$pattern"; then
       echo -e "${RED}BLOCKED${NC} $file matches: ${YELLOW}$pattern${NC}"
-      # Show the matching lines
       git show ":$file" | grep -nEi "$pattern" | head -3 | sed 's/^/   /'
-      FAIL=1
+      echo "FAIL" > /tmp/dotfiles_hook_fail
     fi
   done
 done
+
+[ -f /tmp/dotfiles_hook_fail ] && FAIL=1 && rm -f /tmp/dotfiles_hook_fail
 
 if [ "$FAIL" -eq 1 ]; then
   echo ""

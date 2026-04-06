@@ -1,7 +1,17 @@
-# This is Git's per-user configuration file.
 [user]
 	name = Bruno Jurković
 	email = bruno.jurkovic1@gmail.com
+
+# Work email for repos under valere-margins or property-pilot orgs
+[includeIf "hasconfig:remote.*.url:https://github.com/valere-margins/**"]
+	path = ~/.config/git/work
+[includeIf "hasconfig:remote.*.url:git@github-work:valere-margins/**"]
+	path = ~/.config/git/work
+[includeIf "hasconfig:remote.*.url:https://github.com/property-pilot/**"]
+	path = ~/.config/git/work
+[includeIf "hasconfig:remote.*.url:git@github-work:property-pilot/**"]
+	path = ~/.config/git/work
+
 [credential "https://github.com"]
 	helper =
 	helper = !/opt/homebrew/bin/gh auth git-credential

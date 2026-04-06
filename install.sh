@@ -89,6 +89,12 @@ ok "available"
 # ── Stow Packages ─────────────────────────────────────────
 step "Symlinking configurations"
 
+# Remove OMZ-generated .zshrc if it's not already a symlink (blocks stow)
+if [ -f "$HOME/.zshrc" ] && [ ! -L "$HOME/.zshrc" ]; then
+  mv "$HOME/.zshrc" "$HOME/.zshrc.omz-backup"
+  info "backed up OMZ .zshrc to .zshrc.omz-backup"
+fi
+
 STOW_PACKAGES=(
   yabai
   skhd
@@ -101,6 +107,7 @@ STOW_PACKAGES=(
   bat
   btop
   fastfetch
+  ghostty
   gh
 )
 
