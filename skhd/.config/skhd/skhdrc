@@ -43,8 +43,10 @@ alt + shift - 5 : yabai -m window --space 5; yabai -m space --focus 5
 # Back and forth
 alt - tab : yabai -m space --focus recent
 
-# Move space to next monitor
-alt + shift - tab : yabai -m space --display next || yabai -m space --display first
+# Move window to next monitor and follow focus
+alt + shift - tab : WIN=$(yabai -m query --windows --window | jq '.id'); \
+                    yabai -m window --display next || yabai -m window --display first; \
+                    yabai -m window --focus "$WIN"
 
 # ── App Launchers ──────────────────────────────────────────
 alt - y : open -na /Applications/Ghostty.app --args -e /bin/sh -c "yazi; exit"
