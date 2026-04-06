@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 360" width="840" height="360">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="28%" r="55%">
+      <stop offset="0%" stop-color="#363a4f" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#181926" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="0.6" fill="#363a4f"/>
+    </pattern>
+    <pattern id="scanlines" x="0" y="0" width="1" height="2" patternUnits="userSpaceOnUse">
+      <rect width="1" height="1" fill="#181926"/>
+    </pattern>
+    <filter id="mask-soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="25"/>
+    </filter>
+    <mask id="fade">
+      <rect x="70" y="37" width="700" height="146" rx="20" fill="white" filter="url(#mask-soft)"/>
+    </mask>
+    <filter id="tglow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8"/>
+    </filter>
+  </defs>
+
+  <rect width="840" height="360" rx="12" fill="#181926"/>
+  <rect width="840" height="360" rx="12" fill="url(#glow)"/>
+
+  <rect width="840" height="360" rx="12" fill="url(#dots)" opacity="0.1"/>
+
+  <g font-family="'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" mask="url(#fade)">
+    <text x="50" y="45" fill="#8aadf4" opacity="0.65" xml:space="preserve">+++*********##################*************++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++********</text>
+    <text x="50" y="58" fill="#8da9f2" opacity="0.74" xml:space="preserve">+++++++++******************++++++++++++++====================================================================++++++++++++++++************</text>
+    <text x="50" y="71" fill="#91a6f1" opacity="0.83" xml:space="preserve">======+++++++++++++++++==============----------------------------------------------=================================++++++++++**********#</text>
+    <text x="50" y="84" fill="#95a3ef" opacity="0.92" xml:space="preserve">=========================-------------:::::::::::::::::::::::::::::::::::::::::-------------------------------==========++++++++*********</text>
+    <text x="50" y="97" fill="#9b9fee" opacity="0.99" xml:space="preserve">=======================-----------:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::-------------========++++++++*******</text>
+    <text x="50" y="110" fill="#a19cec" opacity="0.90" xml:space="preserve">+++++++++++++++++===========-----------::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::------------========+++++++++++***</text>
+    <text x="50" y="123" fill="#a899eb" opacity="0.80" xml:space="preserve">***************+++++++++++===========-------------------::::::::::::::::::::::::::::::::::::::::::---------------==========++++++++++++++</text>
+    <text x="50" y="136" fill="#ae96e9" opacity="0.71" xml:space="preserve">############************+++++++++++===============--------------------------------------------------------==============+++++++++++++++++</text>
+    <text x="50" y="149" fill="#b592e8" opacity="0.62" xml:space="preserve">################************++++++++++++++=====================================================================++++++++++++++++++++++++++</text>
+    <text x="50" y="162" fill="#bb95eb" opacity="0.53" xml:space="preserve">######********************++++++++++++++++====================================================+++++++++++++++++++++**************++++++++</text>
+    <text x="50" y="175" fill="#c09af0" opacity="0.50" xml:space="preserve">*********++++++++++++++++++++++==================================================+++++++++++++++++++**********************************+++</text>
+    <text x="50" y="188" fill="#c6a0f6" opacity="0.50" xml:space="preserve">=================================-----------------------------================++++++++++++++**************######################*********</text>
+  </g>
+
+  <rect x="0" y="32" width="840" height="156" fill="url(#scanlines)" opacity="0.06"/>
+
+  <line x1="252.0" y1="202" x2="588.0" y2="202" stroke="#8aadf4" stroke-width="0.5" opacity="0.15"/>
+
+  <text x="420.0" y="248" text-anchor="middle" font-family="'SF Mono', 'Fira Code', Menlo, Consolas, monospace" font-size="54" font-weight="bold" fill="#8aadf4" opacity="0.2" filter="url(#tglow)">dotfiles</text>
+  <text x="420.0" y="248" text-anchor="middle" font-family="'SF Mono', 'Fira Code', Menlo, Consolas, monospace" font-size="54" font-weight="bold" fill="#cad3f5">dotfiles</text>
+
+  <text x="420.0" y="278" text-anchor="middle" font-family="'SF Mono', 'Fira Code', Menlo, Consolas, monospace" font-size="13" fill="#6e738d" letter-spacing="1.5">macOS  ·  Apple Silicon  ·  tiling WM</text>
+
+  <text x="420.0" y="304" text-anchor="middle" font-family="'SF Mono', 'Fira Code', Menlo, Consolas, monospace" font-size="11" fill="#8aadf4" opacity="0.55" letter-spacing="0.5">yabai  ·  skhd  ·  sketchybar  ·  neovim  ·  ghostty  ·  starship</text>
+
+  <g stroke="#363a4f" stroke-width="1.5" fill="none" opacity="0.3">
+    <path d="M14,34 L14,14 L34,14"/>
+    <path d="M806,14 L826,14 L826,34"/>
+    <path d="M14,326 L14,346 L34,346"/>
+    <path d="M806,346 L826,346 L826,326"/>
+  </g>
+</svg>
