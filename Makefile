@@ -1,5 +1,5 @@
 DOTFILES := $(shell pwd)
-STOW_PACKAGES := yabai skhd sketchybar starship git zsh nvim yazi wezterm bat btop fastfetch kanata aerospace karabiner gh
+STOW_PACKAGES := yabai skhd sketchybar starship git zsh nvim yazi bat btop fastfetch gh
 
 .PHONY: all install stow unstow update macos brew clean help
 
@@ -38,10 +38,10 @@ brew: ## Install Homebrew packages
 macos: ## Apply macOS defaults
 	@bash macos/defaults.sh
 
-agents: ## Copy LaunchAgents
+agents: ## Copy LaunchAgents (substitutes __HOME__ with actual path)
 	@mkdir -p $(HOME)/Library/LaunchAgents
 	@for plist in launchagents/*.plist; do \
-		cp "$$plist" "$(HOME)/Library/LaunchAgents/$$(basename $$plist)"; \
+		sed 's|__HOME__|$(HOME)|g' "$$plist" > "$(HOME)/Library/LaunchAgents/$$(basename $$plist)"; \
 		echo "  copied $$(basename $$plist)"; \
 	done
 

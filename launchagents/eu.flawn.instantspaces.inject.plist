@@ -7,7 +7,7 @@
 
     <key>ProgramArguments</key>
     <array>
-      <string>/Users/bruno/Development/instantspaces/scripts/auto-inject.sh</string>
+      <string>__HOME__/Development/instantspaces/scripts/auto-inject.sh</string>
       <string>min0125</string>
     </array>
 
@@ -36,8 +36,8 @@
 
     <!-- Optional: log paths for debugging -->
     <key>StandardOutPath</key>
-    <string>/Users/bruno/Library/Logs/instantspaces.auto-inject.out.log</string>
+    <string>__HOME__/Library/Logs/instantspaces.auto-inject.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/bruno/Library/Logs/instantspaces.auto-inject.err.log</string>
+    <string>__HOME__/Library/Logs/instantspaces.auto-inject.err.log</string>
   </dict>
 </plist>

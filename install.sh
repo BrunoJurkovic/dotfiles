@@ -98,13 +98,9 @@ STOW_PACKAGES=(
   zsh
   nvim
   yazi
-  wezterm
   bat
   btop
   fastfetch
-  kanata
-  aerospace
-  karabiner
   gh
 )
 
@@ -121,7 +117,7 @@ step "LaunchAgents"
 mkdir -p "$HOME/Library/LaunchAgents"
 for plist in "$DOTFILES/launchagents/"*.plist; do
   name=$(basename "$plist")
-  cp "$plist" "$HOME/Library/LaunchAgents/$name"
+  sed "s|__HOME__|$HOME|g" "$plist" > "$HOME/Library/LaunchAgents/$name"
   ok "$name"
 done
 

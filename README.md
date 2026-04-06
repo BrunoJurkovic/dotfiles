@@ -71,7 +71,6 @@ make install
 | [zsh](https://www.zsh.org/) + [Oh My Zsh](https://ohmyz.sh/) | [`zsh/`](zsh/) | Shell with autosuggestions + syntax highlighting |
 | [Starship](https://starship.rs/) | [`starship/`](starship/) | Minimal prompt with git integration |
 | [Ghostty](https://ghostty.org/) | - | GPU-accelerated terminal |
-| [WezTerm](https://wezterm.org/) | [`wezterm/`](wezterm/) | Secondary terminal (Lua config) |
 
 ### CLI Replacements
 
@@ -120,19 +119,15 @@ Per-space accent colors in SketchyBar:
 
 ```
 ~/.dotfiles/
-├── aerospace/          # AeroSpace WM config (inactive)
 ├── bat/                # Catppuccin theme for bat
 ├── btop/               # System monitor + theme
 ├── fastfetch/          # System info with custom logo
 ├── gh/                 # GitHub CLI config
 ├── git/                # Git config + delta + global ignore
-├── kanata/             # Keyboard remapping
-├── karabiner/          # Karabiner-Elements config
 ├── nvim/               # Neovim (Kickstart-based)
 ├── sketchybar/         # Status bar items + plugins
 ├── skhd/               # Hotkey definitions
 ├── starship/           # Prompt configuration
-├── wezterm/            # WezTerm terminal config
 ├── yabai/              # Tiling WM config + display setup
 ├── yazi/               # File manager + Catppuccin flavor
 ├── zsh/                # Shell config + aliases + plugins
