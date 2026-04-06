@@ -44,8 +44,7 @@ make install
 2. Installs [Homebrew](https://brew.sh/) (if missing)
 3. Clones dotfiles to `~/.dotfiles`
 4. Runs `brew bundle` from the Brewfile
-5. Installs [Oh My Zsh](https://ohmyz.sh/) + plugins (autosuggestions, fast-syntax-highlighting)
-6. Symlinks all configs via [GNU Stow](https://www.gnu.org/software/stow/)
+5. Symlinks all configs via [GNU Stow](https://www.gnu.org/software/stow/) (zinit + plugins auto-install on first shell)
 7. Installs LaunchAgents (yabai, skhd, sketchybar, borders, instantspaces)
 8. Optionally applies macOS defaults (`macos/defaults.sh`)
 
@@ -89,7 +88,8 @@ The config handles cold boot with a retry loop (up to 10 attempts to load `yabai
 | Discord | 3 &mdash; Social | Managed |
 | Figma | 4 &mdash; Design | Managed |
 | Simulator | 4 &mdash; Design | Managed |
-| Finder, System Settings, Calculator, Archive Utility, Activity Monitor | &mdash; | Floating |
+| Finder, System Settings, Calculator, Archive Utility, Activity Monitor, About This Mac, Software Update, Keychain Access, Font Book, Disk Utility, Preview, Bitwarden | &mdash; | Floating |
+| Picture-in-Picture | &mdash; | Floating, sticky, above |
 
 On launch, yabai ensures exactly **5 spaces** exist (creating or destroying as needed), labels them, and auto-launches Ghostty, Chrome, and Discord if they aren't running.
 
@@ -138,7 +138,9 @@ All window management keybindings use `alt` as the modifier.
 | `alt + 1-5` | Focus space |
 | `alt + shift + 1-5` | Move window to space (and follow) |
 | `alt + tab` | Toggle recent space |
-| `alt + shift + tab` | Move space to next display |
+| `alt + shift + tab` | Move window to next display |
+| `alt + shift + x` | Mirror tree (x-axis) |
+| `alt + shift + y` | Mirror tree (y-axis) |
 
 </details>
 
@@ -190,11 +192,11 @@ All window management keybindings use `alt` as the modifier.
 
 | Tool | Config | Role |
 |------|--------|------|
-| [zsh](https://www.zsh.org/) + [Oh My Zsh](https://ohmyz.sh/) | [`zsh/`](zsh/) | Shell framework |
+| [zsh](https://www.zsh.org/) + [zinit](https://github.com/zdharma-continuum/zinit) | [`zsh/`](zsh/) | Shell with turbo-loaded plugins |
 | [Starship](https://starship.rs/) | [`starship/`](starship/) | Two-line prompt with Catppuccin palette |
 | [Ghostty](https://ghostty.org/) | [`ghostty/`](ghostty/) | GPU-accelerated terminal |
 
-**Ghostty** runs frameless at 95% opacity with GeistMono Nerd Font (14px), block cursor (no blink), and single-instance mode.
+**Ghostty** runs frameless at 95% opacity with background blur, GeistMono Nerd Font (14px), block cursor, and single-instance mode.
 
 **Starship** renders a two-line prompt:
 
@@ -205,7 +207,7 @@ All window management keybindings use `alt` as the modifier.
 
 Directory (blue Powerline), git branch/status, command duration, and time on line 1. Status character on line 2.
 
-**Zsh plugins:** `git`, `zsh-autosuggestions`, `fast-syntax-highlighting`
+**Zsh plugins:** `git`, `zsh-autosuggestions`, `fast-syntax-highlighting`, `zsh-completions`
 
 **Shell aliases:**
 
@@ -261,7 +263,7 @@ Every default replaced with a modern alternative, all installed via the Brewfile
 | Git | gitsigns.nvim, vim-fugitive, diffview.nvim |
 | File explorer | oil.nvim (buffer-based) |
 | Editing | mini.nvim (ai, surround, statusline), nvim-autopairs |
-| UI | tokyonight (night), transparent.nvim, trouble.nvim, which-key.nvim |
+| UI | catppuccin (macchiato), transparent.nvim, trouble.nvim, which-key.nvim |
 | Motion | hardtime.nvim (enforces good habits), smear-cursor.nvim |
 
 </details>
@@ -358,11 +360,21 @@ Blue       #8aadf4    Lavender  #b7bdf8    Text      #cad3f5
 - Initial repeat delay: 15 (shortest)
 - Disable press-and-hold (enables key repeat)
 - Trackpad tap-to-click: ON
+- Disable auto-capitalization, smart dashes, smart quotes, auto-period, auto-correct
 
 **Screenshots:**
 - Save to `~/Pictures/Screenshots`
 - Format: PNG
 - Drop shadow: OFF
+
+**System:**
+- Scrollbars: show only when scrolling
+- Disable "are you sure you want to open?" quarantine dialog
+- Expand save/print panels by default
+- Disable crash reporter dialog
+- Skip disk image verification
+- Disable automatic termination of inactive apps
+- Activity Monitor: sort by CPU, show all processes
 
 </details>
 
@@ -391,6 +403,8 @@ Blue       #8aadf4    Lavender  #b7bdf8    Text      #cad3f5
 **Infra:** doctl (DigitalOcean), flyctl (Fly.io), doppler (secrets management)
 
 **Utilities:** imagemagick, ffmpegthumbnailer, nmap, bitwarden-cli
+
+**Claude Code helpers:** tree, ast-grep, difftastic, scc, sd, yq, nowplaying-cli
 
 **Casks:** ghostty, docker-desktop, dbeaver-community, mitmproxy, sf-symbols
 
