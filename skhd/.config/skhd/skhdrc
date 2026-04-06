@@ -48,6 +48,10 @@ alt + shift - tab : WIN=$(yabai -m query --windows --window | jq '.id'); \
                     yabai -m window --display next || yabai -m window --display first; \
                     yabai -m window --focus "$WIN"
 
+# ── Mirror Tree ────────────────────────────────────────────
+alt + shift - x : yabai -m space --mirror x-axis
+alt + shift - y : yabai -m space --mirror y-axis
+
 # ── App Launchers ──────────────────────────────────────────
 alt - y : open -na /Applications/Ghostty.app --args -e /bin/sh -c "yazi; exit"
 alt - t : open -a /Applications/Ghostty.app

@@ -53,6 +53,16 @@ yabai -m rule --add app="System Settings"    manage=off
 yabai -m rule --add app="Calculator"         manage=off
 yabai -m rule --add app="Archive Utility"    manage=off
 yabai -m rule --add app="Activity Monitor"   manage=off
+yabai -m rule --add app="^About This Mac$"   manage=off
+yabai -m rule --add app="^Software Update$"  manage=off
+yabai -m rule --add app="^Keychain Access$"  manage=off
+yabai -m rule --add app="^Font Book$"        manage=off
+yabai -m rule --add app="^Disk Utility$"     manage=off
+yabai -m rule --add app="^Preview$"          manage=off
+yabai -m rule --add app="^Bitwarden$"        manage=off
+
+# Picture-in-Picture (YouTube, FaceTime, etc.)
+yabai -m rule --add subrole="^AXSystemDialog$" manage=off sticky=on layer=above
 
 # ── Sketchybar Signals ────────────────────────────────────
 yabai -m signal --add event=space_changed \

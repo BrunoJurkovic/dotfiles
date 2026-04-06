@@ -11,6 +11,7 @@ window-padding-x = 8
 window-padding-y = 4
 window-padding-balance = true
 background-opacity = 0.95
+background-blur-radius = 20
 unfocused-split-opacity = 0.9
 
 # ── Behavior ───────────────────────────────────────────────
@@ -21,7 +22,11 @@ shell-integration = zsh
 
 # ── Cursor ─────────────────────────────────────────────────
 cursor-style = block
-cursor-style-blink = false
+cursor-style-blink = true
+
+# ── Typography ─────────────────────────────────────────────
+bold-is-bright = false
+adjust-cell-height = 0
 
 # ── Performance ────────────────────────────────────────────
 gtk-single-instance = true

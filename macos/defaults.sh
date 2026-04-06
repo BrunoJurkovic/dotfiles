@@ -58,6 +58,40 @@ defaults write com.apple.screencapture location -string "$HOME/Pictures/Screensh
 defaults write com.apple.screencapture type -string "png"
 defaults write com.apple.screencapture disable-shadow -bool true
 
+# ── Text Input (disable "smart" features that break code) ─
+defaults write NSGlobalDomain NSAutomaticCapitalizationEnabled -bool false
+defaults write NSGlobalDomain NSAutomaticDashSubstitutionEnabled -bool false
+defaults write NSGlobalDomain NSAutomaticPeriodSubstitutionEnabled -bool false
+defaults write NSGlobalDomain NSAutomaticQuoteSubstitutionEnabled -bool false
+defaults write NSGlobalDomain NSAutomaticSpellingCorrectionEnabled -bool false
+
+# ── Scrollbars ────────────────────────────────────────────
+defaults write NSGlobalDomain AppleShowScrollBars -string "WhenScrolling"
+
+# ── Dialogs ───────────────────────────────────────────────
+defaults write com.apple.LaunchServices LSQuarantine -bool false
+defaults write NSGlobalDomain NSNavPanelExpandedStateForSaveMode -bool true
+defaults write NSGlobalDomain NSNavPanelExpandedStateForSaveMode2 -bool true
+defaults write NSGlobalDomain PMPrintingExpandedStateForPrint -bool true
+defaults write NSGlobalDomain PMPrintingExpandedStateForPrint2 -bool true
+
+# ── Crash Reporter ────────────────────────────────────────
+defaults write com.apple.CrashReporter DialogType -string "none"
+
+# ── Activity Monitor ──────────────────────────────────────
+defaults write com.apple.ActivityMonitor SortColumn -string "CPUUsage"
+defaults write com.apple.ActivityMonitor SortDirection -int 0
+defaults write com.apple.ActivityMonitor ShowCategory -int 0
+
+# ── Disk Images ───────────────────────────────────────────
+defaults write com.apple.frameworks.diskimages skip-verify -bool true
+defaults write com.apple.frameworks.diskimages skip-verify-locked -bool true
+defaults write com.apple.frameworks.diskimages skip-verify-remote -bool true
+
+# ── Apps ──────────────────────────────────────────────────
+defaults write NSGlobalDomain NSDisableAutomaticTermination -bool true
+defaults write NSGlobalDomain AppleFontSmoothing -int 1
+
 # ── Restart affected services ─────────────────────────────
 echo "Restarting affected services..."
 killall Dock 2>/dev/null || true

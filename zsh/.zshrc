@@ -4,11 +4,33 @@ export PATH="$HOME/.local/bin:$HOME/bin:/usr/local/bin:$PATH"
 export PATH="$PATH:$HOME/fvm/default/bin"
 export PATH="$PATH:$HOME/.pub-cache/bin"
 
-# ── Oh My Zsh ─────────────────────────────────────────────
-export ZSH="$HOME/.oh-my-zsh"
-ZSH_THEME=""
-plugins=(git zsh-autosuggestions fast-syntax-highlighting)
-source "$ZSH/oh-my-zsh.sh"
+# ── zinit Plugin Manager ──────────────────────────────────
+ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
+[ ! -d "$ZINIT_HOME" ] && mkdir -p "$(dirname $ZINIT_HOME)" && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
+source "${ZINIT_HOME}/zinit.zsh"
+
+# ── Completion (before OMZ libs that call compdef) ────────
+autoload -Uz compinit && compinit
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' 'r:|=*' 'l:|=* r:|=*'
+zstyle ':completion:*' special-dirs true
+zstyle ':completion:*' use-cache yes
+
+# ── OMZ Libraries (cherry-picked, not the full framework) ─
+zinit snippet OMZL::directories.zsh
+zinit snippet OMZL::git.zsh
+zinit snippet OMZL::history.zsh
+zinit snippet OMZL::key-bindings.zsh
+SAVEHIST=50000  # Override OMZ default (10000 < HISTSIZE causes silent history loss)
+
+# ── Plugins (turbo-loaded after prompt renders) ───────────
+zinit wait lucid for \
+    OMZP::git \
+    zdharma-continuum/fast-syntax-highlighting \
+  atload"_zsh_autosuggest_start" \
+    zsh-users/zsh-autosuggestions \
+  blockf \
+    zsh-users/zsh-completions
 
 # ── Editor ─────────────────────────────────────────────────
 export EDITOR="nvim"

@@ -85,39 +85,17 @@ if ! command -v stow &>/dev/null; then
 fi
 ok "available"
 
-# ── Oh My Zsh ─────────────────────────────────────────────
-# Must install BEFORE stowing — OMZ creates its own .zshrc which we replace
-step "Oh My Zsh"
-if [ -d "$HOME/.oh-my-zsh" ]; then
-  ok "already installed"
-else
-  info "installing..."
-  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-  ok "installed"
-fi
-
-# Plugins (non-fatal — network issues shouldn't kill the install)
-ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
-
-if [ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]; then
-  git clone https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions" && ok "zsh-autosuggestions" || warn "zsh-autosuggestions clone failed"
-else
-  skip "zsh-autosuggestions (exists)"
-fi
-
-if [ ! -d "$ZSH_CUSTOM/plugins/fast-syntax-highlighting" ]; then
-  git clone https://github.com/zdharma-continuum/fast-syntax-highlighting "$ZSH_CUSTOM/plugins/fast-syntax-highlighting" && ok "fast-syntax-highlighting" || warn "fast-syntax-highlighting clone failed"
-else
-  skip "fast-syntax-highlighting (exists)"
-fi
+# ── zinit (auto-installs on first shell launch via .zshrc) ─
+step "zinit plugin manager"
+ok "will auto-install on first shell launch"
 
 # ── Stow Packages ─────────────────────────────────────────
 step "Symlinking configurations"
 
-# Remove OMZ-generated .zshrc if it's not already our symlink
+# Remove any existing .zshrc if it's not already our symlink
 if [ -f "$HOME/.zshrc" ] && [ ! -L "$HOME/.zshrc" ]; then
-  mv "$HOME/.zshrc" "$HOME/.zshrc.omz-backup"
-  info "backed up OMZ .zshrc to .zshrc.omz-backup"
+  mv "$HOME/.zshrc" "$HOME/.zshrc.backup"
+  info "backed up existing .zshrc"
 fi
 
 STOW_PACKAGES=(

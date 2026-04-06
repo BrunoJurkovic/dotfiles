@@ -52,6 +52,15 @@ brew "ffmpegthumbnailer"
 brew "nmap"
 brew "bitwarden-cli"
 
+# ── Claude Code Helpers ────────────────────────────────────
+brew "tree"                    # directory structure (used by Claude for project overview)
+brew "ast-grep"                # AST-aware code search via `sg` command
+brew "difftastic"              # structural diffs (understands syntax, not just text)
+brew "scc"                     # fast code statistics (lines, languages, complexity)
+brew "sd"                      # simpler sed for quick text replacements
+brew "yq"                      # jq but for YAML/TOML files
+brew "nowplaying-cli"          # media controls for sketchybar
+
 # ── Casks ──────────────────────────────────────────────────
 cask "ghostty"
 cask "docker-desktop"
