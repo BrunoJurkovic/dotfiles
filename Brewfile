@@ -60,6 +60,7 @@ brew "scc"                     # fast code statistics (lines, languages, complex
 brew "sd"                      # simpler sed for quick text replacements
 brew "yq"                      # jq but for YAML/TOML files
 brew "nowplaying-cli"          # media controls for sketchybar
+brew "glow"                    # terminal markdown renderer
 
 # ── Casks ──────────────────────────────────────────────────
 cask "ghostty"
