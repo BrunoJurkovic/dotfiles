@@ -406,7 +406,7 @@ Blue       #8aadf4    Lavender  #b7bdf8    Text      #cad3f5
 
 **Claude Code helpers:** tree, ast-grep, difftastic, scc, sd, yq, nowplaying-cli
 
-**Casks:** ghostty, docker-desktop, dbeaver-community, mitmproxy, sf-symbols
+**Casks:** ghostty, ferdium, docker-desktop, dbeaver-community, mitmproxy, sf-symbols
 
 **Fonts:** Atkinson Hyperlegible Mono, Hack Nerd Font, Inter, Monaspace, SF Pro, Symbols Only Nerd Font
 
@@ -420,6 +420,7 @@ Blue       #8aadf4    Lavender  #b7bdf8    Text      #cad3f5
 
 ```
 ~/.dotfiles/
+├── claude/             # Claude Code settings (permissions, hooks, plugins)
 ├── bat/                # Catppuccin theme for bat
 ├── btop/               # System monitor config + theme
 ├── fastfetch/          # System info with custom 5-color ASCII logo

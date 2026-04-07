@@ -1,0 +1,252 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Read",
+      "Edit",
+      "Write",
+      "Grep",
+      "Glob",
+      "Agent",
+      "WebFetch",
+      "WebSearch",
+      "NotebookEdit",
+      "mcp__clockify__*",
+      "mcp__linear-server__*",
+      "mcp__context7__*",
+      "mcp__chrome-devtools__*",
+      "mcp__mcp-unframer-co__*",
+      "mcp__plugin_figma_figma__*",
+      "Read(~/Development/athes_mobile/**)",
+      "Read(~/.pub-cache/hosted/pub.dev/pretty_chopper_logger-1.3.0/lib/**)",
+      "Bash(cat:*)",
+      "Bash(fvm flutter analyze:*)",
+      "WebFetch(domain:docs.fleaflet.dev)",
+      "WebFetch(domain:pub.dev)",
+      "Bash(fvm flutter pub:*)",
+      "WebFetch(domain:fmtc.jaffaketchup.dev)",
+      "Bash(wc:*)",
+      "mcp__linear-server__list_issues",
+      "mcp__clockify__get_current_user",
+      "mcp__clockify__list_workspaces",
+      "mcp__linear-server__list_teams",
+      "mcp__clockify__list_projects",
+      "mcp__linear-server__get_issue",
+      "mcp__linear-server__list_projects",
+      "mcp__clockify__create_time_entry",
+      "mcp__linear-server__update_issue",
+      "Bash(grep:*)",
+      "mcp__figma-desktop__get_screenshot",
+      "Bash(find:*)",
+      "mcp__figma-desktop__get_design_context",
+      "mcp__clockify__update_time_entry",
+      "Bash(fvm flutter test:*)",
+      "mcp__linear-server__list_issue_statuses",
+      "mcp__clockify__stop_timer",
+      "Bash(tree:*)",
+      "mcp__linear-server__list_comments",
+      "WebFetch(domain:github.com)",
+      "mcp__clockify__get_running_timer",
+      "Bash(wtp add:*)",
+      "mcp__clockify__get_today_entries",
+      "mcp__clockify__delete_time_entry",
+      "Bash(~/go/bin/claudio analyze:*)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(python3:*)",
+      "Bash(gh pr create:*)",
+      "mcp__figma-desktop__get_metadata",
+      "WebFetch(domain:staging.winmorebd.ai)",
+      "Bash(curl:*)",
+      "Bash(head:*)",
+      "mcp__clockify__get_time_entries",
+      "Bash(build_runner build:*)",
+      "mcp__linear-server__save_issue",
+      "mcp__linear-server__get_project",
+      "mcp__mobile-mcp__*",
+      "mcp__plugin_figma_figma__get_screenshot",
+      "mcp__plugin_figma_figma__get_design_context",
+      "mcp__plugin_figma_figma__get_metadata"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(rm -rf /*)",
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ],
+    "ask": [],
+    "defaultMode": "default",
+    "additionalDirectories": [
+      "../property-pilot-worktrees"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude-presence/claude-hook.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Context was compacted. Run: git log --oneline -5 && git branch --show-current && cat CLAUDE.md 2>/dev/null | head -20'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude-presence/claude-hook.sh",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|Bash|Read|Grep|Glob|WebSearch|WebFetch|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude-presence/claude-hook.sh",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/vault-stop.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude-presence/claude-hook.sh",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude-presence/claude-hook.sh",
+            "timeout": 5,
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "printf '\\033]9;Claude needs your attention\\a\\a' > /dev/tty 2>/dev/null",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude-presence/claude-hook.sh",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "$HOME/.claude/statusline-catppuccin.sh"
+  },
+  "enabledPlugins": {
+    "ccc-skills@ccc": true,
+    "clangd-lsp@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "planning-with-files@planning-with-files": true,
+    "playground@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "figma@claude-plugins-official": true,
+    "margenerate@margins-skills": true,
+    "superpowers@claude-plugins-official": true,
+    "imessage@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "margins-skills": {
+      "source": {
+        "source": "github",
+        "repo": "valere-margins/margins-skills"
+      },
+      "autoUpdate": true
+    }
+  },
+  "sandbox": {
+    "enabled": true,
+    "network": {
+      "allowedDomains": [
+        "github.com",
+        "api.github.com",
+        "raw.githubusercontent.com",
+        "objects.githubusercontent.com"
+      ]
+    },
+    "filesystem": {
+      "allowWrite": [
+        "~/.pub-cache",
+        "~/.npm",
+        "//tmp"
+      ]
+    },
+    "excludedCommands": [
+      "open",
+      "gh",
+      "brew",
+      "stow",
+      "curl",
+      "wget",
+      "mise",
+      "npm",
+      "npx",
+      "node",
+      "python3",
+      "pip",
+      "git"
+    ],
+    "enableWeakerNetworkIsolation": true,
+    "autoAllow": true
+  },
+  "syntaxHighlightingDisabled": false,
+  "alwaysThinkingEnabled": true,
+  "effortLevel": "high",
+  "voiceEnabled": true,
+  "feedbackSurveyState": {
+    "lastShownTime": 1754048537402
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "commitCoAuthor": false
+}
