@@ -58,7 +58,7 @@ alt - t : open -a /Applications/Ghostty.app
 alt - d : open -a /Applications/Discord.app
 alt - c : open -a /Applications/Google\ Chrome.app
 alt - f : open -a /Applications/Figma.app
-alt - s : open -a /Applications/Xcode.app/Contents/Developer/Applications/Simulator.app
+alt - s : open -a "$(xcode-select -p)/Applications/Simulator.app"
 alt - o : open -a /Applications/Obsidian.app
 
 # ── Service Mode ───────────────────────────────────────────
