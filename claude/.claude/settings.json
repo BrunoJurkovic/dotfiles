@@ -50,7 +50,6 @@
       "Bash(wtp add:*)",
       "mcp__clockify__get_today_entries",
       "mcp__clockify__delete_time_entry",
-      "Bash(~/go/bin/claudio analyze:*)",
       "Bash(gh api:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(python3:*)",
