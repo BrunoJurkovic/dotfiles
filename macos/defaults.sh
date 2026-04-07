@@ -3,7 +3,9 @@
 # macOS defaults — idempotent, safe to re-run.
 # Curated for a tiling window manager setup.
 
-set -euo pipefail
+set -uo pipefail
+# Note: -e omitted because macOS 26+ locks several preference domains,
+# causing defaults write to exit 1. Failures are non-fatal here.
 
 echo "Applying macOS defaults..."
 
@@ -21,11 +23,13 @@ defaults write com.apple.dock springboard-show-duration -float 0
 defaults write com.apple.dock springboard-hide-duration -float 0
 defaults write com.apple.dock springboard-page-duration -float 0
 
-# ── WindowManager (Sequoia) ───────────────────────────────
-defaults write com.apple.WindowManager EnableTilingByEdgeDrag -bool false
-defaults write com.apple.WindowManager EnableTopTilingByEdgeDrag -bool false
-defaults write com.apple.WindowManager EnableTilingOptionAccelerator -bool false
-defaults write com.apple.WindowManager EnableStandardClickToShowDesktop -int 0
+# ── WindowManager (Sequoia+) ──────────────────────────────
+# macOS 26+ locks this domain; use System Settings > Desktop & Dock instead.
+# Kept for older versions; || true prevents script abort.
+defaults write com.apple.WindowManager EnableTilingByEdgeDrag -bool false 2>/dev/null || true
+defaults write com.apple.WindowManager EnableTopTilingByEdgeDrag -bool false 2>/dev/null || true
+defaults write com.apple.WindowManager EnableTilingOptionAccelerator -bool false 2>/dev/null || true
+defaults write com.apple.WindowManager EnableStandardClickToShowDesktop -int 0 2>/dev/null || true
 
 # ── Animations ─────────────────────────────────────────────
 defaults write com.apple.universalaccess reduceMotion -bool true
