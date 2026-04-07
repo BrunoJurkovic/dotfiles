@@ -1,0 +1,138 @@
+# Tailspin theme — optimized for Flutter / Dart logs
+
+[dates]
+date = { fg = "blue" }
+time = { fg = "cyan" }
+zone = { fg = "bright_black", italic = true }
+separator = { fg = "bright_black" }
+
+[numbers]
+style = { fg = "cyan" }
+
+[urls]
+http = { fg = "red", faint = true }
+https = { fg = "green", faint = true }
+host = { fg = "blue" }
+path = { fg = "cyan" }
+query_params_key = { fg = "magenta" }
+query_params_value = { fg = "yellow" }
+symbols = { fg = "bright_black" }
+
+[paths]
+segment = { fg = "green" }
+separator = { fg = "bright_black" }
+
+[quotes]
+style = { fg = "yellow" }
+token = '"'
+
+[key_value_pairs]
+key = { fg = "bright_blue" }
+separator = { fg = "bright_black" }
+
+[ip_addresses]
+number = { fg = "blue" }
+letter = { fg = "magenta" }
+separator = { fg = "bright_black" }
+
+[uuids]
+number = { fg = "blue", faint = true }
+letter = { fg = "magenta", faint = true }
+separator = { fg = "bright_black" }
+
+[pointers]
+number = { fg = "blue" }
+letter = { fg = "magenta" }
+
+[processes]
+name = { fg = "green" }
+separator = { fg = "bright_black" }
+id = { fg = "yellow" }
+
+[json]
+key = { fg = "blue" }
+quote_token = { fg = "blue", faint = true }
+curly_bracket = { fg = "bright_black" }
+square_bracket = { fg = "bright_black" }
+comma = { fg = "bright_black" }
+colon = { fg = "bright_black" }
+
+# -- Log severities --
+
+[[keywords]]
+words = ['ERROR', 'SEVERE', 'FATAL', 'E/Flutter', 'E/']
+style = { fg = "red", bold = true }
+
+[[keywords]]
+words = ['WARNING', 'WARN', 'W/']
+style = { fg = "yellow", bold = true }
+
+[[keywords]]
+words = ['INFO', 'I/Flutter', 'I/']
+style = { fg = "green" }
+
+[[keywords]]
+words = ['DEBUG', 'FINE', 'D/']
+style = { fg = "blue" }
+
+[[keywords]]
+words = ['VERBOSE', 'FINER', 'FINEST', 'V/']
+style = { fg = "bright_black" }
+
+# -- Flutter framework --
+
+[[keywords]]
+words = ['EXCEPTION', 'Exception', 'FlutterError']
+style = { fg = "red", bold = true }
+
+[[keywords]]
+words = ['null', 'true', 'false']
+style = { fg = "cyan", italic = true }
+
+# -- HTTP methods --
+
+[[keywords]]
+words = ['GET']
+style = { fg = "green", bold = true }
+
+[[keywords]]
+words = ['POST']
+style = { fg = "blue", bold = true }
+
+[[keywords]]
+words = ['PUT', 'PATCH']
+style = { fg = "yellow", bold = true }
+
+[[keywords]]
+words = ['DELETE']
+style = { fg = "red", bold = true }
+
+# -- Flutter exception banner lines --
+
+[[regexps]]
+regex = '═+'
+style = { fg = "red" }
+
+[[regexps]]
+regex = '#{1,3}\d+'
+style = { fg = "bright_black", italic = true }
+
+# -- Dart stack trace frames --
+
+[[regexps]]
+regex = 'package:[^\s)]*'
+style = { fg = "magenta" }
+
+# -- HTTP status codes --
+
+[[regexps]]
+regex = '\b2\d{2}\b'
+style = { fg = "green", bold = true }
+
+[[regexps]]
+regex = '\b4\d{2}\b'
+style = { fg = "yellow", bold = true }
+
+[[regexps]]
+regex = '\b5\d{2}\b'
+style = { fg = "red", bold = true }
