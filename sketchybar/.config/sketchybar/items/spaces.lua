@@ -38,80 +38,79 @@ for i = 1, 5 do
   spaces[i] = space
 end
 
-local function update_spaces()
-  sbar.exec("yabai -m query --spaces", function(spaces_json)
-    local focused = nil
-    if type(spaces_json) == "table" then
-      for _, s in ipairs(spaces_json) do
-        if s["has-focus"] then
-          focused = s.index
-          break
-        end
+-- Track which space is focused
+local focused_space = nil
+
+-- Update the visual state of all spaces using current focus + window data
+local function refresh_spaces()
+  sbar.exec("yabai -m query --windows", function(windows_json)
+    if type(windows_json) ~= "table" then return end
+
+    -- Build per-space app lists
+    local space_apps = {}
+    for sid = 1, 5 do space_apps[sid] = {} end
+
+    for _, win in ipairs(windows_json) do
+      local sid = win.space
+      if sid >= 1 and sid <= 5 and win.app then
+        space_apps[sid][win.app] = true
       end
     end
 
-    if not focused then return end
+    for sid = 1, 5 do
+      local color = colors.space.colors[sid] or colors.highlight
+      local apps = space_apps[sid]
+      local has_apps = next(apps) ~= nil
 
-    sbar.exec("yabai -m query --windows", function(windows_json)
-      if type(windows_json) ~= "table" then return end
-
-      -- Build per-space app lists
-      local space_apps = {}
-      for sid = 1, 5 do space_apps[sid] = {} end
-
-      for _, win in ipairs(windows_json) do
-        local sid = win.space
-        if sid >= 1 and sid <= 5 and win.app then
-          space_apps[sid][win.app] = true
+      -- Build icon strip
+      local icon_strip = ""
+      if has_apps then
+        for app_name, _ in pairs(apps) do
+          icon_strip = icon_strip .. " " .. app_icons(app_name)
         end
       end
 
-      -- Build batched update
-      for sid = 1, 5 do
-        local color = colors.space.colors[sid] or colors.highlight
-        local apps = space_apps[sid]
-        local has_apps = next(apps) ~= nil
-
-        -- Build icon strip
-        local icon_strip = ""
-        if has_apps then
-          for app_name, _ in pairs(apps) do
-            icon_strip = icon_strip .. " " .. app_icons(app_name)
-          end
-        end
-
-        if sid == focused then
-          sbar.animate("tanh", 10, function()
-            spaces[sid]:set({
-              icon = { color = colors.space.active_fg },
-              label = { string = icon_strip, color = colors.space.active_fg },
-              background = { drawing = true, color = color },
-              drawing = true,
-            })
-          end)
-        elseif has_apps then
-          sbar.animate("tanh", 10, function()
-            spaces[sid]:set({
-              icon = { color = color },
-              label = { string = icon_strip, color = colors.space.inactive_fg },
-              background = { drawing = false },
-              drawing = true,
-            })
-          end)
-        else
-          spaces[sid]:set({ drawing = false })
-        end
+      if sid == focused_space then
+        sbar.animate("tanh", 10, function()
+          spaces[sid]:set({
+            icon = { color = colors.space.active_fg },
+            label = { string = icon_strip, color = colors.space.active_fg },
+            background = { drawing = true, color = color },
+            drawing = true,
+          })
+        end)
+      elseif has_apps then
+        sbar.animate("tanh", 10, function()
+          spaces[sid]:set({
+            icon = { color = color },
+            label = { string = icon_strip, color = colors.space.inactive_fg },
+            background = { drawing = false },
+            drawing = true,
+          })
+        end)
+      else
+        spaces[sid]:set({
+          background = { drawing = false },
+          drawing = false,
+        })
       end
-    end)
+    end
   end)
 end
 
--- Subscribe all spaces to update events
+-- Each space item handles its own selection state via SELECTED env var
 for i = 1, 5 do
+  spaces[i]:subscribe("space_change", function(env)
+    local selected = env.SELECTED == "true"
+    if selected then
+      focused_space = i
+    end
+    refresh_spaces()
+  end)
+
   spaces[i]:subscribe({
-    "space_change",
     "window_focus",
     "windows_on_spaces",
     "front_app_switched",
-  }, update_spaces)
+  }, refresh_spaces)
 end
