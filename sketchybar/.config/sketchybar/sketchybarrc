@@ -1,2 +1,4 @@
+#!/usr/bin/env lua
+
 require("helpers")
 require("init")
