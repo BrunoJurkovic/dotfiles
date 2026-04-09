@@ -65,6 +65,7 @@ brew "glow"                    # terminal markdown renderer
 # ── Casks ──────────────────────────────────────────────────
 cask "ghostty"
 cask "ferdium"
+cask "maccy"
 cask "docker-desktop"
 cask "dbeaver-community"
 cask "mitmproxy"
