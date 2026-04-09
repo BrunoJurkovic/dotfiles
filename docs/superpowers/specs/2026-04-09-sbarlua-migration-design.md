@@ -8,8 +8,8 @@ Migrate the SketchyBar configuration from shell scripts to SbarLua (Lua-based co
 
 ```
 sketchybar/.config/sketchybar/
-  sketchybarrc              # #!/usr/bin/env lua — entry point
-  init.lua                  # orchestrator: begin_config, require items, end_config, event_loop
+  sketchybarrc              # entry point — package.cpath, sbar global, begin/end_config, event_loop
+  init.lua                  # chains require("bar"), require("default"), require("items")
   bar.lua                   # bar appearance (height, color, blur, position, etc.)
   default.lua               # default item properties (fonts, colors, padding)
   colors.lua                # Catppuccin Macchiato palette (returns table)
@@ -43,8 +43,29 @@ All current shell files are removed:
 
 - `colors.sh` -> `colors.lua`
 - `icon_map.sh` -> `helpers/app_icons.lua`
-- `items/*.sh` -> `items/*.lua`
-- `plugins/*.sh` -> inline Lua callbacks (no plugins directory)
+- `items/apple.sh` -> `items/apple.lua`
+- `items/spaces.sh` -> `items/spaces.lua`
+- `items/front_app.sh` -> `items/front_app.lua`
+- `items/playing.sh` -> `items/playing.lua`
+- `items/datetime.sh` -> `items/calendar.lua`
+- `items/battery.sh` -> `items/widgets/battery.lua`
+- `items/volume.sh` -> `items/widgets/volume.lua`
+- `items/wifi.sh` -> `items/widgets/wifi.lua`
+- `items/cpu.sh` -> `items/widgets/cpu.lua`
+- `plugins/battery.sh` -> inline callback in `items/widgets/battery.lua`
+- `plugins/clock.sh` -> superseded by `items/calendar.lua`
+- `plugins/cpu.sh` -> inline callback in `items/widgets/cpu.lua`
+- `plugins/datetime.sh` -> inline callback in `items/calendar.lua`
+- `plugins/front_app.sh` -> inline callback in `items/front_app.lua`
+- `plugins/icons.sh` -> superseded by `helpers/app_icons.lua`
+- `plugins/playing.sh` -> inline callback in `items/playing.lua`
+- `plugins/space.sh` -> inline callback in `items/spaces.lua`
+- `plugins/space_click.sh` -> inline callback in `items/spaces.lua`
+- `plugins/space_update.sh` -> inline callback in `items/spaces.lua`
+- `plugins/volume.sh` -> inline callback in `items/widgets/volume.lua`
+- `plugins/wifi.sh` -> inline callback in `items/widgets/wifi.lua`
+
+The entire `plugins/` directory is removed.
 
 ### Module Patterns
 
@@ -60,7 +81,7 @@ return {
 
 **Item modules** are side-effectful — they use the global `sbar` to create items and subscribe to events. They do not return anything.
 
-**`sbar` is a global** set once in `init.lua`. All submodules reference it directly.
+**`sbar` is a global** set once in `sketchybarrc`. All submodules reference it directly.
 
 ## Constants
 
@@ -160,13 +181,13 @@ Identical to current config.
 
 ### Apple (items/apple.lua)
 
-Static item, left side. Apple Nerd Font icon in highlight color. Click opens Launchpad. No subscription needed.
+Static item, left side. Apple Nerd Font icon in highlight color. `click_script = "open -a Launchpad"`. No subscription needed.
 
 No changes from current behavior.
 
 ### Spaces (items/spaces.lua)
 
-Creates 5 space items (`space.1` through `space.5`) plus a hidden `space_updater` item.
+Creates 5 space components using `sbar.add("space", "space." .. i, { associated_space = i, ... })` — the native SbarLua space type provides built-in `SELECTED` env var and Mission Control integration. No hidden `space_updater` item needed; update logic lives in the space subscription callbacks.
 
 **Improvements over shell version:**
 - Yabai queries (`yabai -m query --spaces`, `yabai -m query --windows`) via `sbar.exec()` with callbacks — fully async, no blocking
@@ -180,7 +201,7 @@ Creates 5 space items (`space.1` through `space.5`) plus a hidden `space_updater
 
 ### Front App (items/front_app.lua)
 
-Left side, shows focused app name and icon in a pill background.
+Left side, shows focused app name and icon in a pill background. `click_script = "open -a 'Mission Control'"`.
 
 **Improvements:**
 - Animate label: collapse width to 0, update text, expand back to dynamic — subtle transition on app switch
@@ -200,12 +221,12 @@ Center (position `e`), shows music icon when media is playing.
 
 ### Calendar (items/calendar.lua)
 
-Right side. Shows formatted date/time and weather.
+Right side. Shows formatted date/time and weather. `update_freq = 30`. Click opens Calendar app.
 
 **Improvements:**
 - `os.date()` for time formatting — no shell fork
 - Weather fetched via `sbar.exec("curl -s 'wttr.in/?format=%c%t'", callback)` — async
-- Weather cached in a local Lua variable, refreshed via `sbar.delay(1800, refresh_fn)` — no filesystem cache
+- Weather cached in a local Lua variable. On each `routine` tick, check if 1800s have elapsed since last fetch; if so, re-fetch. `sbar.delay()` is one-shot, so the re-scheduling is done inside the routine callback instead.
 - Graceful fallback if curl fails (just show date/time)
 
 **Events:** `routine`, `forced`, `system_woke`
@@ -214,7 +235,7 @@ Right side. Shows formatted date/time and weather.
 
 ### Battery (items/widgets/battery.lua)
 
-Right side, in connectivity bracket.
+Right side, in connectivity bracket. `update_freq = 180`. Click opens Battery preferences.
 
 **Improvements:**
 - `sbar.exec("pmset -g batt", callback)` — async
@@ -226,13 +247,15 @@ Right side, in connectivity bracket.
 
 Right side, in connectivity bracket.
 
-`env.INFO` gives volume percentage directly. Same icon thresholds (SF Symbols). No changes to behavior.
+`env.INFO` gives volume percentage directly. Same icon thresholds (SF Symbols). Click opens Sound preferences. No changes to behavior.
 
 **Events:** `volume_change`
 
 ### Wifi (items/widgets/wifi.lua)
 
 Right side, in connectivity bracket.
+
+Click opens Network preferences.
 
 **Improvements:**
 - `sbar.exec()` for SSID query — async instead of blocking `system_profiler` call
@@ -241,16 +264,24 @@ Right side, in connectivity bracket.
 
 ### CPU (items/widgets/cpu.lua)
 
-Right side, graph item with 30-width. Own bracket background (separate from connectivity).
+Right side, graph item. Click opens btop in Ghostty.
+
+**Visual properties (preserved from current config):**
+- `width = 90`, graph width 30
+- `graph.color = colors.highlight`, `graph.fill_color = colors.with_alpha(colors.highlight, 0.2)`, `graph.line_width = 1.5`
+- `icon = "SF Symbol"`, `icon.font = "SF Pro:Semibold:12.0"`
+- `icon.padding_left = 14`, `icon.padding_right = 4`, `label.padding_left = 4`, `label.padding_right = 14`
+- Own bracket background: `background.color = colors.bracket`, `corner_radius = 12`, `height = 28`
 
 **Improvements:**
 - C event provider (`helpers/event_providers/cpu_load/`) pushes `cpu_update` events every 2 seconds
 - No shell forking for CPU measurement
 - Animate graph color transitions between highlight/warning/danger thresholds
+- **Fallback:** If the C provider binary doesn't exist or fails to start, fall back to `update_freq = 5` with `sbar.exec("ps -eo pcpu | awk ...", callback)`
 
-**Events:** `cpu_update` (custom, from C provider)
+**Events:** `cpu_update` (custom, from C provider), or `routine` (fallback)
 
-**Provider auto-start:** `helpers/init.lua` compiles the provider (`make`), `cpu.lua` launches it via `sbar.exec()` on load.
+**Provider compilation:** `helpers/init.lua` runs `os.execute("cd $CONFIG_DIR/helpers/event_providers/cpu_load && make 2>/dev/null")`. The `2>/dev/null` ensures a failed compile doesn't break config loading. `cpu.lua` checks if the binary exists before launching it.
 
 ### Connectivity Bracket
 
@@ -265,13 +296,15 @@ background.height = 28
 
 All animations use `sbar.animate("tanh", duration, fn)`:
 
-| Item | Trigger | Animation | Duration (frames) |
-|------|---------|-----------|-------------------|
+| Item | Trigger | Animation | Duration |
+|------|---------|-----------|----------|
 | Spaces | space_change | Background color + icon color transition | 10 |
 | Front App | front_app_switched | Label width collapse/expand | 8 |
 | Playing | media_change (play) | Alpha 0 -> 1 fade in | 15 |
 | Playing | media_change (stop) | Alpha 1 -> 0 fade out | 15 |
 | CPU graph | threshold crossing | Graph color transition | 20 |
+
+Duration values match SketchyBar's animation duration parameter (higher = slower). Tune by feel during testing.
 
 ## C Event Provider
 
@@ -335,17 +368,16 @@ Direct O(1) table lookup instead of shell case statement + file cache.
 
 ## Config Lifecycle
 
+SketchyBar executes `sketchybarrc` directly when SbarLua is installed (no shebang needed — SketchyBar has its own embedded Lua runtime).
+
 ```
-sketchybarrc (shebang: #!/usr/bin/env lua)
-  -> require("helpers")       -- set package.cpath, compile C providers
-  -> require("init")
-       -> sbar = require("sketchybar")
-       -> sbar.begin_config()
-       -> require("bar")       -- bar appearance
-       -> require("default")   -- default item props
-       -> require("items")     -- all items created + subscribed
-       -> sbar.end_config()    -- flush all config in one IPC message
-       -> sbar.event_loop()    -- start processing callbacks
+sketchybarrc
+  -> require("helpers")         -- set package.cpath, compile C providers
+  -> sbar = require("sketchybar")  -- global, used by all submodules
+  -> sbar.begin_config()        -- batch all initial commands
+  -> require("init")            -- chains: require("bar"), require("default"), require("items")
+  -> sbar.end_config()          -- flush all config in one IPC message
+  -> sbar.event_loop()          -- start processing callbacks (MUST be last)
 ```
 
 ## Installation
@@ -365,13 +397,15 @@ No Brewfile changes needed. SketchyBar itself stays as the brew formula.
 
 ## Migration Checklist
 
-1. Install SbarLua (`make install`)
+1. Install SbarLua (`git clone && make install`)
 2. Create `colors.lua`, `icons.lua`, `settings.lua` constant modules
 3. Create `bar.lua` and `default.lua`
 4. Create `helpers/init.lua` and `helpers/app_icons.lua`
 5. Create C event provider (`helpers/event_providers/cpu_load/`)
 6. Create all item modules (`items/`)
-7. Create `init.lua` orchestrator and `sketchybarrc` entry point
-8. Remove all old `.sh` files
+7. Create `sketchybarrc` entry point and `init.lua` orchestrator
+8. Remove all old `.sh` files and `plugins/` directory
 9. Restart SketchyBar and verify
 10. Test each item: spaces switching, front app, media, battery, volume, wifi, cpu graph, weather, click actions
+
+**Rollback:** All changes are in git. If the migration fails, `git checkout -- sketchybar/` restores the shell config instantly. Old files are removed in a separate commit after verification (step 9) succeeds, so the deletion is trivially revertable.
