@@ -205,39 +205,7 @@
     }
   },
   "sandbox": {
-    "enabled": true,
-    "network": {
-      "allowedDomains": [
-        "github.com",
-        "api.github.com",
-        "raw.githubusercontent.com",
-        "objects.githubusercontent.com"
-      ]
-    },
-    "filesystem": {
-      "allowWrite": [
-        "~/.pub-cache",
-        "~/.npm",
-        "//tmp"
-      ]
-    },
-    "excludedCommands": [
-      "open",
-      "gh",
-      "brew",
-      "stow",
-      "curl",
-      "wget",
-      "mise",
-      "npm",
-      "npx",
-      "node",
-      "python3",
-      "pip",
-      "git"
-    ],
-    "enableWeakerNetworkIsolation": true,
-    "autoAllow": true
+    "enabled": false
   },
   "syntaxHighlightingDisabled": false,
   "alwaysThinkingEnabled": true,
@@ -247,5 +215,8 @@
     "lastShownTime": 1754048537402
   },
   "skipDangerousModePermissionPrompt": true,
-  "commitCoAuthor": false
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  }
 }
