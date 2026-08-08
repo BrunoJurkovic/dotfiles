@@ -1,28 +1,50 @@
+# Ghostty — single source of truth.
+# NOTE: on macOS Ghostty ALSO loads ~/Library/Application Support/com.mitchellh.ghostty/config
+# and that file wins on every conflicting key. Keep it deleted so this file stays authoritative.
+
 # ── Font ───────────────────────────────────────────────────
-font-family = GeistMono Nerd Font Mono
-font-size = 14
+font-family = MonaspiceNe Nerd Font Mono
+font-size = 13
+font-thicken = false
 
 # ── Theme ──────────────────────────────────────────────────
-theme = catppuccin-macchiato
+theme = Catppuccin Macchiato
 
 # ── Window ─────────────────────────────────────────────────
 window-decoration = false
-window-padding-x = 8
-window-padding-y = 4
+window-padding-x = 12
+window-padding-y = 12
 window-padding-balance = true
+macos-icon = holographic
+
+# Perf: every point below 1 costs a per-frame blend; 1 = free.
 background-opacity = 0.95
-background-blur-radius = 20
+# background-blur = 15          # off: macOS re-blurs the whole backdrop per window per frame
+# macos-window-shadow = false   # uncomment for a further win while transparent (loses drop shadow)
 unfocused-split-opacity = 0.9
+
+# ── Shader (off for performance) ───────────────────────────
+# custom-shader = ~/.config/ghostty/shaders/starfield.glsl
+# custom-shader-animation = false   # never use 'always': redraws every frame even when idle
 
 # ── Behavior ───────────────────────────────────────────────
 copy-on-select = clipboard
 confirm-close-surface = false
 mouse-hide-while-typing = true
-shell-integration = zsh
+resize-overlay = never
+scrollback-limit = 10000000
+
+# ── Shell & Clipboard ──────────────────────────────────────
+shell-integration = detect
+shell-integration-features = cursor,sudo,title
+clipboard-read = allow
+clipboard-write = allow
+clipboard-paste-protection = true
 
 # ── Cursor ─────────────────────────────────────────────────
-cursor-style = block
-cursor-style-blink = true
+# Perf: blink forces a redraw on a timer forever, even on an idle window.
+cursor-style = bar
+cursor-style-blink = false
 
 # ── Typography ─────────────────────────────────────────────
 bold-is-bright = false
@@ -31,5 +53,11 @@ adjust-cell-height = 0
 # ── Notifications ──────────────────────────────────────────
 desktop-notifications = true
 
-# ── Performance ────────────────────────────────────────────
-gtk-single-instance = true
+# ── Keybinds ───────────────────────────────────────────────
+keybind = super+t=new_window
+keybind = super+alt+left=goto_split:left
+keybind = super+alt+right=goto_split:right
+keybind = super+alt+up=goto_split:top
+keybind = super+alt+down=goto_split:bottom
+keybind = super+alt+enter=toggle_split_zoom
+keybind = super+alt+equal=equalize_splits
