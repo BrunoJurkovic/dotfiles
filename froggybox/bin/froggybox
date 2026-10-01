@@ -1,0 +1,1057 @@
+#!/usr/bin/env bash
+# froggybox — one command to get a working remote Pi environment on EC2.
+#
+#   froggybox up      start-or-resume, bootstrap, sync env, attach tmux agents
+#   froggybox down    stop the instance (EBS persists, ~$14/mo)
+#   froggybox status  state + spend
+#   froggybox ssh     plain shell on the box
+#   froggybox sync    re-push local env without attaching
+#   froggybox fetch   bring branches home over git (non-destructive)
+#   froggybox breakglass  open public SSH for this IP when the tailnet is broken
+#
+# Design decisions baked in:
+#  - ON-DEMAND, not spot: subagents run ~30min and are not resumable, so a
+#    2-minute spot warning cannot be acted on, and spot termination would
+#    delete the root volume with in-flight work on it.
+#  - Config flows ONE WAY, local -> remote. The box is authoritative for
+#    mission work. We never rsync agent memory back; that way lies
+#    last-writer-wins corruption when local and remote Pi both run.
+
+set -uo pipefail
+
+# Machine identity lives outside this file so the script can sit in a public
+# dotfiles repo: instance id, tailnet name, key path and repo names never leak.
+FROGGYBOX_ENV="${FROGGYBOX_ENV:-$HOME/.config/froggybox/env}"
+# shellcheck disable=SC1090
+[ -f "$FROGGYBOX_ENV" ] && . "$FROGGYBOX_ENV"
+INSTANCE_ID="${FROGGYBOX_INSTANCE_ID:-}"
+KEY="${FROGGYBOX_KEY:-}"
+TS_HOST="${FROGGYBOX_TS_HOST:-}"
+# Rsynced up with .git and fetched home over git; none has an origin remote.
+REPOS="${FROGGYBOX_REPOS:-}"
+for v in INSTANCE_ID KEY TS_HOST REPOS; do
+  [ -n "${!v}" ] || { echo "froggybox: FROGGYBOX_$v is not set (expected in $FROGGYBOX_ENV)" >&2; exit 2; }
+done
+REGION="${FROGGYBOX_REGION:-eu-central-1}"
+RUSER=ubuntu
+WINDOWS="${FROGGYBOX_WINDOWS:-4}"
+HOURLY=1.1664   # m8a.4xlarge eu-central-1
+SSH_ALIAS=froggybox
+TS_NAME=froggybox
+TS_AUTHKEY_FILE="${FROGGYBOX_TS_AUTHKEY:-$HOME/.config/tailscale/authkey}"
+TMUX_SESSION=froggybox
+DISPLAY_NAME="remote build box  ·  16 cores  ·  64 GB  ·  eu-central-1"
+
+SSHOPT=(-i "$KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+        -o LogLevel=ERROR -o ServerAliveInterval=30 -o ConnectTimeout=10)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# presentation layer
+# Everything here degrades to plain text when piped or when NO_COLOR is set,
+# so the script stays usable in logs and CI without a second code path.
+# ─────────────────────────────────────────────────────────────────────────────
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  TTY=1
+  E=$'\033'
+  R="${E}[0m"; B="${E}[1m"; D="${E}[2m"
+  FROG="${E}[38;2;74;222;128m"    # frog green
+  LIME="${E}[38;2;163;230;53m"
+  CYAN="${E}[38;2;34;211;238m"
+  AMBER="${E}[38;2;251;191;36m"
+  RED="${E}[38;2;248;113;113m"
+  GRAY="${E}[38;2;110;125;145m"
+  MOSS="${E}[38;2;34;120;74m"
+else
+  TTY=0
+  E=""; R=""; B=""; D=""
+  FROG=""; LIME=""; CYAN=""; AMBER=""; RED=""; GRAY=""; MOSS=""
+fi
+
+GL_OK="✓"; GL_BAD="✗"; GL_STEP="▸"; GL_DOT="•"; GL_WARN="!"
+PAD=17   # label column width
+
+_hide_cursor() { [ "$TTY" = 1 ] && printf '%s[?25l' "$E"; }
+_show_cursor() { [ "$TTY" = 1 ] && printf '%s[?25h' "$E"; }
+
+# Spinner runs as a background job; the EXIT trap guarantees the cursor comes
+# back even if the script dies mid-step.
+_SPIN_PID=""
+_SPIN_MSG=""
+_FRAMES=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+
+spin() {
+  _SPIN_MSG="$1"
+  if [ "$TTY" != 1 ]; then printf '  %s %s\n' "$GL_STEP" "$1"; return 0; fi
+  _spin_stop
+  _hide_cursor
+  (
+    i=0
+    while :; do
+      printf '\r  %s%s%s %s%s%s' "$FROG" "${_FRAMES[i % 10]}" "$R" "$GRAY" "$_SPIN_MSG" "$R"
+      i=$(( i + 1 ))
+      sleep 0.08
+    done
+  ) 2>/dev/null &
+  _SPIN_PID=$!
+}
+
+_spin_stop() {
+  if [ -n "$_SPIN_PID" ]; then
+    kill "$_SPIN_PID" 2>/dev/null
+    wait "$_SPIN_PID" 2>/dev/null
+    _SPIN_PID=""
+    printf '\r%s[K' "$E"
+  fi
+}
+
+_cleanup() { _spin_stop; _show_cursor; }
+trap _cleanup EXIT INT TERM
+
+# ok "label" "value"  → aligned two-column status line
+ok()   { _spin_stop; printf '  %s%s%s %-*s %s%s%s\n' "$FROG" "$GL_OK" "$R" "$PAD" "$1" "$B" "${2:-}" "$R"; }
+info() { _spin_stop; printf '  %s%s%s %-*s %s%s%s\n' "$GRAY" "$GL_DOT" "$R" "$PAD" "$1" "$GRAY" "${2:-}" "$R"; }
+warn() { _spin_stop; printf '  %s%s%s %-*s %s%s%s\n' "$AMBER" "$GL_WARN" "$R" "$PAD" "$1" "$AMBER" "${2:-}" "$R"; }
+bad()  { _spin_stop; printf '  %s%s%s %-*s %s%s%s\n' "$RED" "$GL_BAD" "$R" "$PAD" "$1" "$RED" "${2:-}" "$R"; }
+die()  { _spin_stop; printf '\n  %s%s froggybox:%s %s\n\n' "$RED" "$GL_BAD" "$R" "$*" >&2; exit 1; }
+say()  { _spin_stop; printf '  %s%s%s %s%s%s\n' "$CYAN" "$GL_STEP" "$R" "$GRAY" "$*" "$R"; }
+
+rule() { printf '  %s%s%s\n' "$D" "────────────────────────────────────────────────" "$R"; }
+
+# panel "title" "line" "line" ...
+#
+# Pads by CHARACTER count, not printf's %-*s, which pads by bytes and so
+# renders any line containing multibyte glyphs (·, ✓, box-drawing) short.
+panel() {
+  local title="$1"; shift
+  local w=48 i n line
+  # top:  ╭ + ─ + ' title ' + dashes + ╮   (w cells between the corners)
+  printf '  %s╭─%s %s%s%s %s' "$MOSS" "$R" "$FROG$B" "$title" "$R" "$MOSS"
+  n=$(( w - 3 - ${#title} ))
+  for ((i=0; i<n; i++)); do printf '─'; done
+  printf '╮%s\n' "$R"
+  # mid:  │ + ' ' + content + pad + │
+  for line in "$@"; do
+    n=$(( w - 1 - ${#line} ))
+    (( n < 0 )) && n=0
+    printf '  %s│%s %s%*s%s│%s\n' "$MOSS" "$R" "$line" "$n" "" "$MOSS" "$R"
+  done
+  printf '  %s╰' "$MOSS"
+  for ((i=0; i<w; i++)); do printf '─'; done
+  printf '╯%s\n' "$R"
+}
+
+# The banner lives in Python: proper unicode width handling and a smooth
+# per-column reveal are both painful in bash, and python3 is already required.
+banner() {
+  [ "$TTY" = 1 ] || return 0
+  [ "${FROGGYBOX_NO_BANNER:-0}" = 1 ] && return 0
+  python3 - "$1" <<'PY' 2>/dev/null || true
+import sys, time
+
+subtitle = sys.argv[1] if len(sys.argv) > 1 else ""
+
+FROG = [
+    "  @..@ ",
+    " (----)",
+    "( >__< )",
+    " ^^  ^^ ",
+]
+WORD = [
+    "█▀▀ █▀▄ █▀█ █▀▀ █▀▀ █ █ █▀▄ █▀█ ▀▄▀",
+    "█▀▀ █▀▄ █ █ █▄█ █▄█ ▀█▀ █▀▄ █ █ ▄▀▄",
+    "▀   ▀ ▀ ▀▀▀ ▀▀▀ ▀▀▀  ▀  ▀▀  ▀▀▀ ▀ ▀",
+]
+
+def rgb(r, g, b): return f"\033[38;2;{r};{g};{b}m"
+RESET = "\033[0m"
+# green -> cyan, the froggy gradient
+A, Bc = (74, 222, 128), (34, 211, 238)
+
+def grad(i, n):
+    t = i / max(n - 1, 1)
+    return rgb(*(int(A[k] + (Bc[k] - A[k]) * t) for k in range(3)))
+
+width = max(len(r) for r in WORD)
+out = sys.stdout
+
+# Reserve the block, then repaint it in place each frame. Cheaper and far
+# less flickery than clearing the screen.
+LINES = 6
+out.write("\n" * LINES)
+
+def paint(reveal):
+    out.write(f"\033[{LINES}A")
+    out.write("\033[K\n")
+    for row in range(4):
+        out.write("\033[K")
+        frog = FROG[row]
+        out.write(f"  {rgb(74,222,128)}{frog}{RESET}   ")
+        if row >= 1:
+            w = WORD[row - 1]
+            for i, ch in enumerate(w):
+                if i > reveal:
+                    break
+                # bright leading edge gives the wipe its motion
+                if reveal - i < 2 and reveal < width:
+                    out.write(f"\033[1m{rgb(226,255,240)}{ch}{RESET}")
+                else:
+                    out.write(f"{grad(i, width)}{ch}{RESET}")
+        out.write("\n")
+    out.write("\033[K")
+    if reveal >= width:
+        out.write(f"  {rgb(110,125,145)}{subtitle}{RESET}")
+    out.write("\n")
+    out.flush()
+
+try:
+    step = 3
+    for reveal in range(0, width + step, step):
+        paint(reveal)
+        time.sleep(0.012)
+    paint(width)
+except (BrokenPipeError, KeyboardInterrupt):
+    pass
+PY
+}
+
+## Live dashboard -------------------------------------------------------------
+##
+## Rendering is deliberately separated from collection. FROGGYBOX_DASH_DEMO=1
+## feeds a deterministic offline snapshot, so visual changes can be tested
+## without opening SSH or touching the authoritative build box.
+
+meter() {
+  local pct="$1" width="${2:-22}" colour="${3:-$FROG}" filled i
+  [ "$pct" -lt 0 ] 2>/dev/null && pct=0
+  [ "$pct" -gt 100 ] 2>/dev/null && pct=100
+  filled=$(( pct * width / 100 ))
+  for ((i=0; i<width; i++)); do
+    if [ "$i" -lt "$filled" ]; then
+      printf '%s█%s' "$colour" "$R"
+    else
+      printf '%s░%s' "$MOSS" "$R"
+    fi
+  done
+}
+
+human_uptime() {
+  local total="${1:-0}" d h m
+  d=$(( total / 86400 )); h=$(( total % 86400 / 3600 )); m=$(( total % 3600 / 60 ))
+  if [ "$d" -gt 0 ]; then printf '%dd %dh' "$d" "$h"; else printf '%dh %02dm' "$h" "$m"; fi
+}
+
+human_age() {
+  local seconds="${1:-0}"
+  if [ "$seconds" -lt 60 ]; then printf 'now'
+  elif [ "$seconds" -lt 3600 ]; then printf '%dm ago' "$(( seconds / 60 ))"
+  elif [ "$seconds" -lt 86400 ]; then printf '%dh ago' "$(( seconds / 3600 ))"
+  else printf '%dd ago' "$(( seconds / 86400 ))"; fi
+}
+
+dashboard_demo_snapshot() {
+  DASH_SNAPSHOT='SYS|37|42|92|1.84|22788|3|2|4|16|61
+STORAGE|15|145
+LOAD|0.45|3.28|3.15
+NET|128|46
+CACHE|96|1486|55|92
+TOP|pi|21.1|0.8|6h50m
+STALE|nextest|10800|2
+WINDOW|1|agent1|pi|0|44
+WINDOW|2|agent2|pi|0|18
+WINDOW|3|agent3|pi|1|3
+MISSION|feat/room-to-type|complete|9|9|0|480|3005058|15000000|-|0|refresh merge-readiness state|21600000|32400000
+MISSION|feat/the-live-wire|complete|8|8|0|840|2423540|12000000|-|0|record the-live-wire merged to main|19800000|25200000
+MISSION|feat/the-other-direction|armed|4|28|2|125|1858883|36000000|M7|14|pin M7 tests in-crate|4200000|72000000'
+}
+
+dashboard_remote_snapshot() {
+  local host="$1"
+  DASH_SNAPSHOT=$(ssh "${SSHOPT[@]}" "$RUSER@$host" 'bash -s' <<'REMOTE'
+set -u
+
+# Two short samples yield CPU and network throughput without installing tools.
+set -- $(awk '/^cpu / { idle=$5+$6; total=0; for(i=2;i<=NF;i++) total+=$i; print total, idle }' /proc/stat)
+t1=$1; i1=$2
+set -- $(awk -F: 'NR>2 {gsub(/ /,"",$1); if($1!="lo"){split($2,a); rx+=a[1]; tx+=a[9]}} END{print rx+0,tx+0}' /proc/net/dev)
+rx1=$1; tx1=$2
+sleep 0.12
+set -- $(awk '/^cpu / { idle=$5+$6; total=0; for(i=2;i<=NF;i++) total+=$i; print total, idle }' /proc/stat)
+t2=$1; i2=$2
+set -- $(awk -F: 'NR>2 {gsub(/ /,"",$1); if($1!="lo"){split($2,a); rx+=a[1]; tx+=a[9]}} END{print rx+0,tx+0}' /proc/net/dev)
+rx2=$1; tx2=$2
+dt=$((t2-t1)); di=$((i2-i1))
+[ "$dt" -gt 0 ] && cpu=$((100*(dt-di)/dt)) || cpu=0
+rxrate=$(( (rx2-rx1) * 100 / 12 / 1024 )); txrate=$(( (tx2-tx1) * 100 / 12 / 1024 ))
+mem=$(awk '/MemTotal:/ {t=$2} /MemAvailable:/ {a=$2} END {if(t>0) printf "%d", 100*(t-a)/t; else print 0}' /proc/meminfo)
+disk=$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')
+set -- $(df -Pk / | awk 'NR==2 {printf "%d %d", $4/1048576, $2/1048576}')
+diskfree=$1; disktotal=$2
+set -- $(awk '{print $1,$2,$3}' /proc/loadavg)
+load1=$1; load5=$2; load15=$3
+uptime=$(cut -d. -f1 /proc/uptime)
+nextest=$(pgrep -fc cargo-nextest 2>/dev/null || true)
+cargo=$(pgrep -fc '/cargo( |$)' 2>/dev/null || true)
+frog=$(pgrep -fc '/target/debug/froggy' 2>/dev/null || true)
+cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo '?')
+memgb=$(awk '/MemTotal:/ {printf "%.0f", $2/1024/1024}' /proc/meminfo)
+printf 'SYS|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$cpu" "$mem" "$disk" "$load1" "$uptime" "$nextest" "$cargo" "$frog" "$cores" "$memgb"
+printf 'STORAGE|%s|%s\nLOAD|%s|%s|%s\nNET|%s|%s\n' "$diskfree" "$disktotal" "$load1" "$load5" "$load15" "$rxrate" "$txrate"
+
+cache_json=$(sccache --show-stats --stats-format=json 2>/dev/null || echo '{}')
+hits=$(printf '%s' "$cache_json" | jq '[.stats.cache_hits.counts[]?] | add // 0' 2>/dev/null || echo 0)
+misses=$(printf '%s' "$cache_json" | jq '[.stats.cache_misses.counts[]?] | add // 0' 2>/dev/null || echo 0)
+rust_hits=$(printf '%s' "$cache_json" | jq '.stats.cache_hits.counts.Rust // 0' 2>/dev/null || echo 0)
+rust_misses=$(printf '%s' "$cache_json" | jq '.stats.cache_misses.counts.Rust // 0' 2>/dev/null || echo 0)
+[ $((hits+misses)) -gt 0 ] && hitrate=$((100*hits/(hits+misses))) || hitrate=0
+[ $((rust_hits+rust_misses)) -gt 0 ] && rustrate=$((100*rust_hits/(rust_hits+rust_misses))) || rustrate=0
+printf 'CACHE|%s|%s|%s|%s\n' "$hitrate" "$hits" "$misses" "$rustrate"
+
+top=$(ps -eo pcpu=,pmem=,etime=,comm= --sort=-pcpu | head -1)
+set -- $top
+printf 'TOP|%s|%s|%s|%s\n' "${4:-none}" "${1:-0}" "${2:-0}" "${3:--}"
+stale=$(ps -C cargo-nextest -o etimes= 2>/dev/null | sort -nr | head -1 | tr -d ' ')
+printf 'STALE|nextest|%s|%s\n' "${stale:-0}" "$nextest"
+
+now=$(date +%s)
+if tmux has-session -t froggybox 2>/dev/null; then
+  tmux list-windows -t froggybox -F '#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{window_activity}' | while IFS='|' read -r idx name cmd active activity; do
+    [ -n "$activity" ] && activity_age=$((now-activity)) || activity_age=0
+    printf 'WINDOW|%s|%s|%s|%s|%s\n' "$idx" "$name" "$cmd" "$active" "$activity_age"
+  done
+fi
+
+for wt in "$HOME/Development/froggy" "$HOME"/Development/froggy-worktrees/*; do
+  { [ -d "$wt/.git" ] || [ -f "$wt/.git" ]; } || continue
+  branch=$(git -C "$wt" branch --show-current 2>/dev/null)
+  case "$branch" in feat/*|fix/*) ;; *) continue ;; esac
+  slug=${branch#*/}
+  state_file="$wt/docs/ultrapowers/missions/$slug/mission-state.json"
+  status='working'; green=0; total=0; tokens=0; token_budget=0; wall=0; halted=0; open='-'; armed=''; finished=''
+  if [ -f "$state_file" ] && command -v jq >/dev/null; then
+    values=$(jq -r '[.status // "working", ([.milestones[]? | select(.status == "green")] | length), ([.milestones[]?] | length), .budgets.tokensUsed // 0, .budgets.tokens // 0, .budgets.wallClockMs // 0, .budgets.haltedMs // 0, .openDispatch.milestoneId // "-", .armedAt // "", ([.milestones[]?.attemptLog[]?.endedAt | select(. != null)] | max // "")] | map(tostring) | join("|")' "$state_file" 2>/dev/null)
+    IFS='|' read -r status green total tokens token_budget wall halted open armed finished <<VALUES
+$values
+VALUES
+  fi
+  dirty=$(git -C "$wt" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+  last=$(git -C "$wt" log -1 --format=%ct 2>/dev/null || echo "$now")
+  age=$(( now - last ))
+  ahead=$(git -C "$wt" rev-list --count main..HEAD 2>/dev/null || echo 0)
+  subject=$(git -C "$wt" log -1 --format=%s 2>/dev/null | tr '|' '/')
+  elapsed=0
+  if [ -n "$armed" ]; then
+    armed_epoch=$(date -d "$armed" +%s 2>/dev/null || echo "$now")
+    end_epoch=$now
+    if [ "$status" = complete ] && [ -n "$finished" ]; then
+      end_epoch=$(date -d "$finished" +%s 2>/dev/null || echo "$now")
+    fi
+    elapsed=$(( (end_epoch-armed_epoch)*1000-halted )); [ "$elapsed" -lt 0 ] && elapsed=0
+  fi
+  printf 'MISSION|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$branch" "$status" "${green:-0}" "${total:-0}" "${dirty:-0}" "${age:-0}" "${tokens:-0}" "${token_budget:-0}" "${open:--}" "${ahead:-0}" "$subject" "${elapsed:-0}" "${wall:-0}"
+done
+REMOTE
+)
+}
+
+dashboard_render() {
+  local frame="$1"
+  [ "$TTY" = 1 ] && printf '%s[H%s[2J' "$E" "$E"
+  DASH_DATA="$DASH_SNAPSHOT" DASH_FRAME="$frame" DASH_HOURLY="$HOURLY" python3 - <<'PY'
+import os, re, shutil, sys
+
+data = os.environ.get("DASH_DATA", "")
+frame = int(os.environ.get("DASH_FRAME", "0"))
+hourly = float(os.environ.get("DASH_HOURLY", "0"))
+cols = int(os.environ.get("COLUMNS") or shutil.get_terminal_size((100, 30)).columns)
+canvas = max(58, min(cols - 2, 126))
+colour = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+ESC = "\033["
+RESET = ESC + "0m" if colour else ""
+BOLD = ESC + "1m" if colour else ""
+GREEN = ESC + "38;2;74;222;128m" if colour else ""
+CYAN = ESC + "38;2;34;211;238m" if colour else ""
+LIME = ESC + "38;2;163;230;53m" if colour else ""
+AMBER = ESC + "38;2;251;191;36m" if colour else ""
+RED = ESC + "38;2;248;113;113m" if colour else ""
+GRAY = ESC + "38;2;110;125;145m" if colour else ""
+MOSS = ESC + "38;2;34;120;74m" if colour else ""
+
+records = {}
+for raw in data.splitlines():
+    parts = raw.split("|")
+    records.setdefault(parts[0], []).append(parts[1:])
+
+def one(kind, default):
+    return records.get(kind, [default])[0]
+
+sysrec = one("SYS", ["0"] * 10)
+cpu, mem, disk = map(int, sysrec[:3])
+load1, uptime = sysrec[3], int(sysrec[4])
+nextest, cargo, frogs = map(int, sysrec[5:8])
+cores, memgb = sysrec[8:10]
+diskfree, disktotal = one("STORAGE", ["0", "0"])
+loads = one("LOAD", [load1, "—", "—"])
+rx, tx = one("NET", ["0", "0"])
+cache = one("CACHE", ["0", "0", "0", "0"])
+cache_rate, hits, misses, rust_rate = map(int, cache)
+top = one("TOP", ["none", "0", "0", "—"])
+stale = one("STALE", ["nextest", "0", "0"])
+stale_seconds, stale_count = int(stale[1]), int(stale[2])
+
+def tint(text, code):
+    return f"{code}{text}{RESET}" if colour else text
+
+def human_time(seconds):
+    seconds = max(0, int(seconds))
+    if seconds < 60: return "now"
+    if seconds < 3600: return f"{seconds // 60}m ago"
+    if seconds < 86400: return f"{seconds // 3600}h ago"
+    return f"{seconds // 86400}d ago"
+
+def duration(seconds):
+    seconds = max(0, int(seconds))
+    if seconds < 3600: return f"{seconds // 60}m"
+    if seconds < 86400: return f"{seconds // 3600}h {seconds % 3600 // 60:02d}m"
+    return f"{seconds // 86400}d {seconds % 86400 // 3600}h"
+
+def amount(n):
+    n = float(n)
+    if n >= 1_000_000: return f"{n / 1_000_000:.2f}M"
+    if n >= 1_000: return f"{n / 1_000:.1f}K"
+    return str(int(n))
+
+def strip_ansi(text):
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+def fit(text, width):
+    plain = strip_ansi(text)
+    if len(plain) <= width: return text + " " * (width - len(plain))
+    # Dashboard content is coloured by whole line, so plain truncation is safe.
+    return plain[:max(0, width - 1)] + "…"
+
+def bar(pct, width=18, code=GREEN):
+    pct = max(0, min(100, int(pct)))
+    filled = 0 if pct == 0 else max(1, round(width * pct / 100))
+    body = "█" * filled + "░" * (width - filled)
+    return tint(body, code)
+
+def card(title, rows, width):
+    inner = width - 2
+    label = f" {title} "
+    out = [tint("╭─" + label + "─" * max(0, inner - len(label) - 1) + "╮", MOSS)]
+    for row in rows:
+        content = fit(row, inner - 2)
+        out.append(tint("│", MOSS) + " " + content + " " + tint("│", MOSS))
+    out.append(tint("╰" + "─" * inner + "╯", MOSS))
+    return out
+
+def emit(text="", code=None):
+    plain = strip_ansi(text)
+    if len(plain) > canvas: text = plain[:canvas - 1] + "…"
+    print("  " + (tint(text, code) if code else text))
+
+eyes = ["•  •", "•  •", "–  –", "•  •"][frame % 4]
+pulse = ["●", "◉", "●", "◉"][frame % 4]
+spend = uptime * hourly / 3600
+emit(f"@{eyes}@    FROGGYBOX CONTROL PLANE  {pulse} live", GREEN)
+emit(f"(----)   {cores} cores · {memgb} GB · eu-central-1 · uptime {duration(uptime)}", GRAY)
+emit(f"( >__< )  SPEND  ${spend:.2f} this run  ·  read-only telemetry", AMBER)
+emit(" ^^  ^^")
+print()
+
+cpu_code = RED if cpu >= 90 else GREEN
+mem_code = AMBER if mem >= 85 else CYAN
+disk_code = RED if disk >= 90 else AMBER
+used_mem = int(round(float(memgb) * mem / 100)) if str(memgb).isdigit() else 0
+machine_rows = [
+    f"CPU      [{bar(cpu, 12, cpu_code)}] {cpu:3d}%  LOAD {loads[0]} / {loads[1]} / {loads[2]}",
+    f"MEMORY   [{bar(mem, 12, mem_code)}] {mem:3d}%  {used_mem} / {memgb} GB",
+    f"DISK     [{bar(disk, 12, disk_code)}] {disk:3d}%  {diskfree} GB free / {disktotal} GB",
+    f"NETWORK  RX {rx} KiB/s   TX {tx} KiB/s",
+]
+build_rows = [
+    f"SCCACHE  [{bar(cache_rate, 16, GREEN)}] {cache_rate}%",
+    f"Rust hits {rust_rate}%   {hits:,} hits / {misses:,} misses",
+    f"JOBS     nextest {nextest} · cargo {cargo} · froggy {frogs}",
+    f"TOP      {top[0]} {top[1]}% CPU · {top[2]}% MEM · {top[3]}",
+]
+
+if canvas >= 108:
+    gap = 2
+    left_w = (canvas - gap) // 2
+    right_w = canvas - gap - left_w
+    left = card("MACHINE", machine_rows, left_w)
+    right = card("BUILD", build_rows, right_w)
+    for a, b in zip(left, right): emit(a + " " * gap + b)
+else:
+    for line in card("MACHINE", machine_rows, canvas): emit(line)
+    print()
+    for line in card("BUILD", build_rows, canvas): emit(line)
+print()
+
+alerts = []
+if disk >= 90: alerts.append(f"DISK PRESSURE {disk}% · {diskfree} GB free")
+if mem >= 85: alerts.append(f"MEMORY PRESSURE {mem}%")
+if cpu >= 90: alerts.append(f"CPU SATURATED {cpu}%")
+if stale_seconds >= 1800: alerts.append(f"STALE NEXTEST {duration(stale_seconds)} · {stale_count} processes")
+if alerts: emit("ALERTS  " + "  |  ".join("! " + a for a in alerts), RED)
+else: emit("ALERTS  ✓ all nominal", GREEN)
+print()
+
+emit("AGENT WINDOWS", GREEN)
+windows = records.get("WINDOW", [])
+if not windows:
+    emit("○ no tmux session", GRAY)
+else:
+    chunks = []
+    for idx, name, cmd, active, activity in windows:
+        mark = "◉" if active == "1" else "●"
+        chunks.append(f"{mark} {idx}:{name}  {cmd}  · {human_time(activity)}")
+    emit("   ".join(chunks), CYAN)
+print()
+
+emit("MISSION LANES", GREEN)
+for m in records.get("MISSION", []):
+    branch, status = m[0], m[1]
+    green, total, dirty, age = map(int, m[2:6])
+    tokens, token_budget = map(int, m[6:8])
+    open_m, ahead, subject = m[8], int(m[9]), m[10]
+    elapsed_ms, wall_ms = map(int, m[11:13])
+    progress = int(green * 100 / total) if total else 0
+    token_pct = int(tokens * 100 / token_budget) if token_budget else 0
+    state = f"ACTIVE {open_m}" if open_m != "-" else status.upper()
+    dirty_label = f"{dirty}Δ" if dirty else "clean"
+    emit(f"● {branch}   {state}   M{green}/{total} · {progress}%", GREEN if status == "complete" else CYAN)
+    emit(f"  [{bar(progress, 20, GREEN if status == 'complete' else CYAN)}]  TOKENS {amount(tokens)} / {amount(token_budget)} · {token_pct}%   +{ahead} commits   {dirty_label}")
+    budget = f" · wall {duration(elapsed_ms // 1000)} / {duration(wall_ms // 1000)}" if wall_ms else ""
+    emit(f"  ↳ {human_time(age)}{budget} · {subject}", GRAY)
+print()
+emit("1-3 attach  ·  r refresh  ·  q quit  ·  Ctrl-C exit", GRAY)
+PY
+  [ "$TTY" = 1 ] && printf '%s[J' "$E"
+}
+
+attach_agent_window() {
+  local number="$1" host="${2:-}"
+  if [ "${FROGGYBOX_ATTACH_DRY_RUN:-0}" = 1 ]; then
+    printf '\nwould attach agent%s\n' "$number"
+    return 0
+  fi
+  [ -n "$host" ] || host=$(resolve_host)
+  _show_cursor
+  ssh -t "${SSHOPT[@]}" "$RUSER@$host" "tmux attach-session -t '$TMUX_SESSION:agent$number'"
+  _hide_cursor
+}
+
+cmd_dashboard() {
+  local frame=0 key='' state host
+  _hide_cursor
+  while :; do
+    if [ "${FROGGYBOX_DASH_DEMO:-0}" = 1 ]; then
+      dashboard_demo_snapshot
+    else
+      state=$(instance_state)
+      [ "$state" = running ] || die "dashboard needs a running box (state: $state)"
+      host=$(resolve_host)
+      { [ -n "$host" ] && [ "$host" != None ]; } || die "dashboard cannot reach the box"
+      dashboard_remote_snapshot "$host" || die "dashboard telemetry failed"
+    fi
+    dashboard_render "$frame"
+    key="${FROGGYBOX_DASH_KEY:-}"
+    if [ -z "$key" ] && [ "${FROGGYBOX_DASH_ONCE:-0}" != 1 ]; then
+      IFS= read -rsn1 -t 2 key || true
+    fi
+    case "$key" in
+      q) break ;;
+      1|2|3) attach_agent_window "$key" "${host:-}"; break ;;
+      r|'') ;;
+    esac
+    [ "${FROGGYBOX_DASH_ONCE:-0}" = 1 ] && break
+    frame=$((frame + 1))
+  done
+  _show_cursor
+  printf '\n'
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# aws / ssh plumbing
+# ─────────────────────────────────────────────────────────────────────────────
+need() { command -v "$1" >/dev/null || die "missing required tool: $1"; }
+need aws; need rsync; need ssh
+
+instance_state() {
+  aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --region "$REGION" \
+    --query 'Reservations[0].Instances[0].State.Name' --output text 2>/dev/null
+}
+instance_ip() {
+  aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --region "$REGION" \
+    --query 'Reservations[0].Instances[0].PublicIpAddress' --output text 2>/dev/null
+}
+
+# The tailnet is the only route in; the public IP answers only after
+# `froggybox breakglass` has opened port 22 for this machine.
+resolve_host() {
+  if ping -c1 -t2 "$TS_HOST" >/dev/null 2>&1; then echo "$TS_HOST"
+  else instance_ip; fi
+}
+
+# Tailscale needs a few seconds after boot before the box answers on it.
+wait_for_tailnet() {
+  for _ in $(seq 1 24); do
+    ping -c1 -t2 "$TS_HOST" >/dev/null 2>&1 && return 0
+    sleep 3
+  done
+  return 1
+}
+
+write_ssh_config() {
+  local host="$1" cfg="$HOME/.ssh/config"
+  touch "$cfg"; chmod 600 "$cfg"
+  python3 - "$cfg" "$host" "$KEY" "$RUSER" "$SSH_ALIAS" <<'PY'
+import sys
+cfg, host, key, user, alias = sys.argv[1:6]
+BEGIN, END = "# >>> froggybox begin", "# <<< froggybox end"
+block = f"""{BEGIN}
+# Tailscale-stable: this address does NOT change on stop/start.
+Host {alias}
+    HostName {host}
+    User {user}
+    IdentityFile {key}
+    ForwardAgent yes
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
+    ServerAliveInterval 30
+{END}"""
+try:
+    text = open(cfg).read()
+except FileNotFoundError:
+    text = ""
+if BEGIN in text and END in text:
+    text = text.split(BEGIN)[0] + block + text.split(END, 1)[1]
+else:
+    text = (text.rstrip() + "\n\n" + block + "\n") if text.strip() else block + "\n"
+open(cfg, "w").write(text)
+PY
+}
+
+sg_id() {
+  aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --region "$REGION" \
+    --query 'Reservations[0].Instances[0].SecurityGroups[0].GroupId' --output text 2>/dev/null
+}
+
+# CIDRs currently allowed to reach port 22 from the internet.
+public_ssh_cidrs() {
+  aws ec2 describe-security-groups --group-ids "$1" --region "$REGION" \
+    --query 'SecurityGroups[0].IpPermissions[?FromPort==`22`].IpRanges[].CidrIp' \
+    --output text 2>/dev/null | tr '\t' '\n' | grep -E '^[0-9]'
+}
+
+# Public port 22 stays closed. Every up that arrives over the tailnet revokes
+# whatever a breakglass opened, so the closed state is what converges.
+seal_public_ssh() {
+  local sg c n=0
+  sg=$(sg_id)
+  { [ -n "$sg" ] && [ "$sg" != "None" ]; } || return 0
+  for c in $(public_ssh_cidrs "$sg"); do
+    aws ec2 revoke-security-group-ingress --group-id "$sg" --region "$REGION" \
+      --protocol tcp --port 22 --cidr "$c" >/dev/null 2>&1 && n=$((n+1))
+  done
+  [ "$n" -gt 0 ] && ok "public ssh" "closed ($n rule(s) revoked)"
+  return 0
+}
+
+# Idempotent: only authenticates if the box is not already on the tailnet.
+ensure_tailscale() {
+  local host="$1"
+  [ -f "$TS_AUTHKEY_FILE" ] || { warn "tailscale" "no authkey at $TS_AUTHKEY_FILE"; return 0; }
+  local key; key=$(cat "$TS_AUTHKEY_FILE")
+  ssh "${SSHOPT[@]}" "$RUSER@$host" "bash -s" <<REMOTE >/dev/null 2>&1
+set -u
+command -v tailscale >/dev/null || curl -fsSL https://tailscale.com/install.sh | sh
+tailscale status >/dev/null 2>&1 || sudo tailscale up --authkey='$key' --hostname=$TS_NAME --accept-dns=false
+REMOTE
+  local tsip
+  tsip=$(ssh "${SSHOPT[@]}" "$RUSER@$host" 'tailscale ip -4' 2>/dev/null | head -1)
+  ok "tailnet" "${tsip:-unknown}"
+}
+
+wait_for_ssh() {
+  local ip="$1"
+  for _ in $(seq 1 40); do
+    ssh "${SSHOPT[@]}" "$RUSER@$ip" true >/dev/null 2>&1 && return 0
+    sleep 5
+  done
+  return 1
+}
+
+# Idempotent: only installs what is missing, so re-running up is cheap.
+bootstrap() {
+  local ip="$1"
+  ssh "${SSHOPT[@]}" "$RUSER@$ip" 'bash -s' <<'REMOTE'
+set -u
+export DEBIAN_FRONTEND=noninteractive
+# Command name != package name (rg -> ripgrep, fd -> fd-find). Getting this
+# wrong is not a partial failure: apt aborts the WHOLE transaction on one bad
+# name, so a single typo silently skips every other package too.
+missing=""
+need_pkg() { command -v "$1" >/dev/null || missing="$missing $2"; }
+need_pkg git git; need_pkg curl curl; need_pkg tmux tmux; need_pkg jq jq
+need_pkg mold mold; need_pkg clang clang
+# ripgrep + fd are NOT optional: Pi's own grep/glob tools shell out to them.
+# Missing, agents report "no matches" for code that exists - a silent failure.
+need_pkg rg ripgrep; need_pkg fd fd-find
+if [ -n "$missing" ]; then
+  echo "installing:$missing"
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq build-essential pkg-config libssl-dev python3 htop unzip $missing
+fi
+# Ubuntu ships fd as 'fdfind'; Pi's glob tool looks for 'fd'.
+if ! command -v fd >/dev/null && command -v fdfind >/dev/null; then
+  sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+fi
+# bun installs under ~/.bun/bin, which is not on a non-login PATH.
+[ -x "$HOME/.bun/bin/bun" ] && [ ! -x /usr/local/bin/bun ] && sudo ln -sf "$HOME/.bun/bin/bun" /usr/local/bin/bun
+
+# The default toolchain only serves ad-hoc use. Each repo's rust-toolchain.toml
+# is the real pin and gets installed after the repos sync (see sync_env).
+if ! command -v rustup >/dev/null; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+fi
+export PATH="$HOME/.cargo/bin:$PATH"
+
+# Release-tarball tools follow their latest release instead of freezing at
+# whatever was current on first boot. An unreachable GitHub API skips the check.
+latest_tag() { curl -fsSL "https://api.github.com/repos/$1/releases/latest" 2>/dev/null | jq -r '.tag_name // empty' 2>/dev/null; }
+SCV=$(latest_tag mozilla/sccache)
+if [ -n "$SCV" ] && [ "$(sccache --version 2>/dev/null | cut -d' ' -f2)" != "${SCV#v}" ]; then
+  curl -sSL "https://github.com/mozilla/sccache/releases/download/${SCV}/sccache-${SCV}-x86_64-unknown-linux-musl.tar.gz" | tar xz -C /tmp
+  sudo install -m755 "/tmp/sccache-${SCV}-x86_64-unknown-linux-musl/sccache" /usr/local/bin/sccache
+fi
+if command -v cargo-nextest >/dev/null; then
+  cargo nextest self update >/dev/null 2>&1 || true
+else
+  curl -sSLf https://get.nexte.st/latest/linux | tar zxf - -C "$HOME/.cargo/bin"
+fi
+
+if ! command -v node >/dev/null; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - >/dev/null 2>&1
+  sudo apt-get install -y -qq nodejs
+fi
+command -v pi >/dev/null || sudo npm i -g --silent @earendil-works/pi-coding-agent
+command -v pnpm >/dev/null || sudo npm i -g --silent pnpm
+command -v bun >/dev/null || curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1
+
+# gh: used by the done/PR skills. Ubuntu's packaged version lags, so take the release tarball.
+GHV=$(latest_tag cli/cli); GHV=${GHV#v}
+if [ -n "$GHV" ] && [ "$(gh --version 2>/dev/null | awk 'NR==1 {print $3}')" != "$GHV" ]; then
+  curl -sSL "https://github.com/cli/cli/releases/download/v${GHV}/gh_${GHV}_linux_amd64.tar.gz" | tar xz -C /tmp
+  sudo install -m755 "/tmp/gh_${GHV}_linux_amd64/bin/gh" /usr/local/bin/gh
+fi
+
+# Build tuning that measured 2x on this exact workload. Repo-agnostic, so it
+# lives in the global cargo config rather than in any checkout.
+mkdir -p ~/.cargo
+cat > ~/.cargo/config.toml <<'CFG'
+[build]
+rustc-wrapper = "/usr/local/bin/sccache"
+incremental = false
+rustflags = ["-C", "debuginfo=line-tables-only", "-C", "link-arg=-fuse-ld=mold"]
+CFG
+
+mkdir -p ~/Development
+echo "BOOTSTRAP-OK  rustc=$(rustc --version 2>/dev/null | cut -d' ' -f2) node=$(node -v 2>/dev/null) pi=$(pi --version 2>/dev/null)"
+REMOTE
+}
+
+sync_env() {
+  local ip="$1"
+
+  spin "syncing agent config"
+  ssh "${SSHOPT[@]}" "$RUSER@$ip" 'mkdir -p ~/.pi/agent/bridge ~/Development'
+  # Config + skills + project memory. Deliberately excluded:
+  #   sessions/ (1GB, not needed remotely)  npm/ (reinstalled)  git/ (re-cloned)
+  #   pi-hermes-memory/ (793MB, and syncing it two-way corrupts on divergence)
+  rsync -az -e "ssh ${SSHOPT[*]}" \
+    --include='*.json' --exclude='*/' --exclude='*' \
+    "$HOME/.pi/agent/" "$RUSER@$ip:.pi/agent/"
+  rsync -az -e "ssh ${SSHOPT[*]}" "$HOME/.pi/agent/skills/"          "$RUSER@$ip:.pi/agent/skills/"
+  rsync -az -e "ssh ${SSHOPT[*]}" "$HOME/.pi/agent/projects-memory/" "$RUSER@$ip:.pi/agent/projects-memory/"
+  rsync -az -e "ssh ${SSHOPT[*]}" "$HOME/.pi/agent/bridge/"          "$RUSER@$ip:.pi/agent/bridge/"
+  ok "agent config" "skills · memory · bridge"
+
+  # .git IS included deliberately. These repos have no origin remote, so git
+  # history is the only safe channel for getting work back off the box.
+  spin "syncing repos (with .git)"
+  local n=0
+  for r in $REPOS; do
+    [ -d "$HOME/Development/$r" ] || continue
+    rsync -az -e "ssh ${SSHOPT[*]}" \
+      --exclude 'node_modules/' --exclude 'target/' \
+      "$HOME/Development/$r/" "$RUSER@$ip:Development/$r/"
+    n=$((n+1))
+  done
+  ok "repos" "$n synced (git history included)"
+
+  # Missions commit. Git refuses to commit without an identity, so a missing
+  # one would fail every milestone late, after the work was already done.
+  spin "configuring git"
+  local gname gmail
+  gname=$(git config --global user.name); gmail=$(git config --global user.email)
+  ssh "${SSHOPT[@]}" "$RUSER@$ip" \
+    "git config --global user.name '$gname' && git config --global user.email '$gmail' && \
+     git config --global --add safe.directory '*'" >/dev/null 2>&1
+  ok "git identity" "$gname"
+
+  # Register the box as a git remote locally so work comes home over git
+  # rather than a destructive rsync-back. Review local, execute remote.
+  # The URL goes through the ssh alias: only the alias block in ~/.ssh/config
+  # carries the user and key, a bare tailnet hostname gets publickey-denied.
+  for r in $REPOS; do
+    [ -d "$HOME/Development/$r/.git" ] || continue
+    git -C "$HOME/Development/$r" remote remove froggybox 2>/dev/null
+    git -C "$HOME/Development/$r" remote add froggybox \
+      "ssh://$SSH_ALIAS/home/$RUSER/Development/$r" 2>/dev/null
+  done
+  ok "git remote" "froggybox → fetch work home"
+
+  # settings.json carries absolute macOS paths (e.g. bridge tokenPath).
+  # Rewrite the home prefix so extension wiring resolves on Linux.
+  ssh "${SSHOPT[@]}" "$RUSER@$ip" \
+    "sed -i 's|$HOME|/home/$RUSER|g' ~/.pi/agent/settings.json" >/dev/null 2>&1
+  ok "settings.json" "paths rewritten for linux"
+
+  spin "installing extension deps"
+  ssh "${SSHOPT[@]}" "$RUSER@$ip" 'bash -lc "
+    for r in ultrapowers-pi pi-subagents; do
+      [ -d ~/Development/\$r ] || continue
+      if [ ! -d ~/Development/\$r/node_modules ]; then
+        (cd ~/Development/\$r && npm install --silent --no-audit --no-fund >/dev/null 2>&1)
+      fi
+    done"' >/dev/null 2>&1
+  ok "extensions" "deps installed"
+
+  # rust-toolchain.toml is the only toolchain pin; install what each repo asks for.
+  spin "installing rust toolchains"
+  ssh "${SSHOPT[@]}" "$RUSER@$ip" "bash -lc '
+    export PATH=\$HOME/.cargo/bin:\$PATH
+    for r in $REPOS; do
+      [ -f ~/Development/\$r/rust-toolchain.toml ] || continue
+      (cd ~/Development/\$r && rustup toolchain install && rustup component add rustfmt clippy)
+    done'" >/dev/null 2>&1
+  ok "rust" "toolchains from rust-toolchain.toml"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# commands
+# ─────────────────────────────────────────────────────────────────────────────
+cmd_up() {
+  banner "$DISPLAY_NAME"
+  local state; state=$(instance_state)
+  { [ "$state" = "None" ] || [ -z "$state" ]; } && die "instance $INSTANCE_ID not found in $REGION"
+  [ "$state" = "terminated" ] && die "instance is terminated; provision a new one first"
+
+  if [ "$state" = "stopped" ]; then
+    spin "starting instance"
+    aws ec2 start-instances --instance-ids "$INSTANCE_ID" --region "$REGION" >/dev/null
+    aws ec2 wait instance-running --instance-ids "$INSTANCE_ID" --region "$REGION"
+    ok "instance" "${INSTANCE_ID} started"
+  elif [ "$state" = "running" ]; then
+    ok "instance" "${INSTANCE_ID} already up"
+  else
+    spin "waiting for '$state' → running"
+    aws ec2 wait instance-running --instance-ids "$INSTANCE_ID" --region "$REGION"
+    ok "instance" "$INSTANCE_ID running"
+  fi
+
+  spin "waiting for tailnet"
+  local ip
+  if wait_for_tailnet; then
+    ip="$TS_HOST"
+    ok "route" "tailnet ($ip)"
+    seal_public_ssh
+  else
+    [ -n "$(public_ssh_cidrs "$(sg_id)")" ] \
+      || die "tailnet unreachable and public ssh is closed — is Tailscale running here? else: froggybox breakglass"
+    ip=$(instance_ip)
+    { [ -n "$ip" ] && [ "$ip" != "None" ]; } || die "no reachable address; retry in a moment"
+    warn "route" "tailnet down, public ip $ip (breakglass)"
+  fi
+
+  spin "waiting for sshd"
+  wait_for_ssh "$ip" || die "ssh never came up (host: $ip)"
+  ok "sshd" "accepting connections"
+
+  ensure_tailscale "$ip"
+  write_ssh_config "$TS_HOST"
+
+  spin "bootstrapping toolchain"
+  local bout; bout=$(bootstrap "$ip" 2>/dev/null | grep BOOTSTRAP-OK)
+  if [ -n "$bout" ]; then
+    ok "toolchain" "$(echo "$bout" | sed 's/BOOTSTRAP-OK  //')"
+  else
+    warn "toolchain" "bootstrap output unexpected"
+  fi
+
+  sync_env "$ip"
+
+  # Modern terminals (Ghostty, kitty, wezterm) advertise a TERM the box has
+  # never seen. ssh -t forwards it, tmux then refuses to start entirely.
+  if ! ssh "${SSHOPT[@]}" "$RUSER@$ip" "infocmp '$TERM' >/dev/null 2>&1"; then
+    spin "teaching the box TERM=$TERM"
+    infocmp -x "$TERM" 2>/dev/null \
+      | ssh "${SSHOPT[@]}" "$RUSER@$ip" 'mkdir -p ~/.terminfo && tic -x -o ~/.terminfo - 2>/dev/null'
+  fi
+  # Belt and braces: if it still is not resolvable, degrade rather than fail.
+  local rterm="$TERM"
+  ssh "${SSHOPT[@]}" "$RUSER@$ip" "infocmp '$TERM' >/dev/null 2>&1" || rterm=xterm-256color
+  ok "terminal" "$rterm"
+
+  echo
+  panel "ready" \
+    "$WINDOWS pi agents  ·  session '$TMUX_SESSION'" \
+    "detach: Ctrl-b d      cost: \$$HOURLY/h" \
+    "back home: froggybox fetch"
+  echo
+
+  ssh -t "${SSHOPT[@]}" "$RUSER@$ip" "bash -lc '
+    export PATH=\$HOME/.cargo/bin:\$PATH
+    export TERM=$rterm
+    if ! tmux has-session -t $TMUX_SESSION 2>/dev/null; then
+      tmux new-session -d -s $TMUX_SESSION -n shell -c ~/Development/froggy
+      for i in \$(seq 1 $WINDOWS); do
+        tmux new-window -t $TMUX_SESSION -n agent\$i -c ~/Development/froggy
+        tmux send-keys -t $TMUX_SESSION:agent\$i \"pi\" C-m
+      done
+      tmux select-window -t $TMUX_SESSION:shell
+    fi
+    tmux attach -t $TMUX_SESSION'"
+}
+
+cmd_down() {
+  spin "stopping $INSTANCE_ID"
+  local s
+  s=$(aws ec2 stop-instances --instance-ids "$INSTANCE_ID" --region "$REGION" \
+      --query 'StoppingInstances[0].CurrentState.Name' --output text 2>/dev/null)
+  ok "instance" "${s:-stopping}"
+  info "billing" "~\$14.28/mo EBS while stopped"
+  info "resume" "froggybox up  (~1 min)"
+}
+
+cmd_status() {
+  local state; state=$(instance_state)
+  local dot="$RED" label="$state"
+  [ "$state" = "running" ] && dot="$FROG"
+  [ "$state" = "stopped" ] && dot="$AMBER"
+
+  echo
+  printf '  %s%s%s  %sfroggybox%s  %s%s%s\n' \
+    "$dot" "●" "$R" "$B$FROG" "$R" "$GRAY" "$INSTANCE_ID · $REGION" "$R"
+  rule
+  info "state" "$label"
+  if [ -n "$(public_ssh_cidrs "$(sg_id)")" ]; then
+    warn "public ssh" "open: $(public_ssh_cidrs "$(sg_id)" | tr '\n' ' ')"
+  else
+    ok "public ssh" "closed (tailnet only)"
+  fi
+  if [ "$state" = "running" ]; then
+    local pip; pip=$(instance_ip)
+    info "public ip" "${pip:-none}"
+    if ping -c1 -t2 "$TS_HOST" >/dev/null 2>&1; then
+      ok "tailnet" "$TS_HOST"
+    else
+      warn "tailnet" "unreachable"
+    fi
+    local launch; launch=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --region "$REGION" \
+      --query 'Reservations[0].Instances[0].LaunchTime' --output text 2>/dev/null)
+    python3 -c "
+import datetime
+l=datetime.datetime.fromisoformat('$launch'.replace('Z','+00:00'))
+h=(datetime.datetime.now(datetime.timezone.utc)-l).total_seconds()/3600
+print(f'  ${GRAY}${GL_DOT}${R} {\"uptime\":<$PAD} ${GRAY}{h:.2f}h${R}')
+print(f'  ${GRAY}${GL_DOT}${R} {\"spend\":<$PAD} ${AMBER}\${h*$HOURLY:.2f} this run${R} ${GRAY}(\${$HOURLY}/h)${R}')" 2>/dev/null
+  else
+    info "spend" "\$0.02/h (EBS only)"
+  fi
+  echo
+}
+
+cmd_ssh()  {
+  local ip; ip=$(resolve_host); [ "$ip" = "None" ] && die "not running"
+  ssh -t "${SSHOPT[@]}" "$RUSER@$ip"
+}
+cmd_sync() {
+  local ip; ip=$(resolve_host); [ "$ip" = "None" ] && die "not running"
+  banner "syncing local environment → box"
+  sync_env "$ip"
+  echo
+}
+
+# Break-glass for a box whose Tailscale is broken: open port 22 to this
+# machine's current public IP. The next up that reaches the tailnet seals it.
+cmd_breakglass() {
+  local sg cur
+  sg=$(sg_id)
+  { [ -n "$sg" ] && [ "$sg" != "None" ]; } || die "no security group found for $INSTANCE_ID"
+  cur=$(curl -s --max-time 5 https://checkip.amazonaws.com | tr -d '\n')
+  [ -n "$cur" ] || die "could not determine this machine's public ip"
+  if ! public_ssh_cidrs "$sg" | grep -qx "$cur/32"; then
+    aws ec2 authorize-security-group-ingress --group-id "$sg" --region "$REGION" \
+      --protocol tcp --port 22 --cidr "$cur/32" >/dev/null 2>&1 || die "could not open port 22 for $cur/32"
+  fi
+  warn "public ssh" "open for $cur/32"
+  info "next" "froggybox up · the next tailnet up closes it again"
+}
+
+# Bring work home over git. Non-destructive: fetches into remote-tracking refs,
+# never touches your working tree. Merge/cherry-pick yourself afterwards.
+cmd_fetch() {
+  local ip; ip=$(resolve_host); [ "$ip" = "None" ] && die "not running"
+  echo
+  printf '  %s%s froggybox fetch%s %s— work comes home over git%s\n' "$B" "$FROG" "$R" "$GRAY" "$R"
+  rule
+  local r err n
+  for r in $REPOS; do
+    [ -d "$HOME/Development/$r/.git" ] || continue
+    git -C "$HOME/Development/$r" remote set-url froggybox "ssh://$SSH_ALIAS/home/$RUSER/Development/$r" 2>/dev/null \
+      || git -C "$HOME/Development/$r" remote add froggybox "ssh://$SSH_ALIAS/home/$RUSER/Development/$r"
+    spin "fetching $r"
+    if err=$(git -C "$HOME/Development/$r" fetch froggybox 2>&1 >/dev/null); then
+      n=$(git -C "$HOME/Development/$r" branch -r --list 'froggybox/*' 2>/dev/null | wc -l | tr -d ' ')
+      ok "$r" "$n branches"
+    else
+      bad "$r" "$(printf '%s\n' "$err" | tail -1)"
+    fi
+  done
+  rule
+  info "review" "git log froggybox/<branch>"
+  info "diff" "git diff main..froggybox/<branch>"
+  echo
+}
+
+cmd_help() {
+  banner "$DISPLAY_NAME"
+  printf '  %sUSAGE%s  froggybox <command>\n\n' "$B$FROG" "$R"
+  printf '    %sup%s          %sstart · bootstrap · sync · attach %s pi agents%s\n' "$B" "$R" "$GRAY" "$WINDOWS" "$R"
+  printf '    %sdashboard%s   %slive machine · agents · missions%s\n' "$B" "$R" "$GRAY" "$R"
+  printf '    %sstatus%s      %sstate, address and spend%s\n' "$B" "$R" "$GRAY" "$R"
+  printf '    %sdown%s        %sstop the box (EBS persists, ~$14/mo)%s\n' "$B" "$R" "$GRAY" "$R"
+  printf '    %sssh%s         %splain shell on the box%s\n' "$B" "$R" "$GRAY" "$R"
+  printf '    %ssync%s        %sre-push local env without attaching%s\n' "$B" "$R" "$GRAY" "$R"
+  printf '    %sfetch%s       %sbring branches home over git (safe)%s\n' "$B" "$R" "$GRAY" "$R"
+  printf '    %sbreakglass%s  %sopen public ssh for this IP (tailnet broken)%s\n' "$B" "$R" "$GRAY" "$R"
+  echo
+}
+
+case "${1:-}" in
+  up)                cmd_up ;;
+  dashboard|dash|watch) cmd_dashboard ;;
+  down)              cmd_down ;;
+  status)            cmd_status ;;
+  ssh)               cmd_ssh ;;
+  sync)              cmd_sync ;;
+  fetch)             cmd_fetch ;;
+  breakglass)        cmd_breakglass ;;
+  ""|help|-h|--help) cmd_help ;;
+  *) die "unknown command '$1' — try: froggybox help" ;;
+esac
