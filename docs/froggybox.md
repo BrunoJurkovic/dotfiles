@@ -29,6 +29,7 @@ FROGGYBOX_INSTANCE_ID   EC2 instance id
 FROGGYBOX_KEY           path to the instance's SSH private key
 FROGGYBOX_TS_HOST       the box's tailnet FQDN (<name>.<tailnet>.ts.net)
 FROGGYBOX_REPOS         space-separated repo dirs under ~/Development to sync
+FROGGYBOX_AUTH_BROKER_URL  tailnet URL of the shared omp auth broker
 ```
 
 Optional:
@@ -116,8 +117,9 @@ passed on a local command line.
 | layer | tools |
 |---|---|
 | Rust | rustup (default `stable`), rustfmt, clippy, cargo-nextest, mold, sccache |
-| Node | Node 22, npm, pnpm, bun, Pi |
-| Search | **ripgrep, fd** — the agent's `grep`/`glob` shell out to these |
+| Agent | **omp**, the exact local version; fuse-overlayfs for omp's task isolation |
+| Node | Node 22, npm, pnpm, bun |
+| Search | **ripgrep, fd** — what agents and skills call in plain shell commands |
 | Workflow | gh, git identity, tmux, jq, build-essential, clang |
 
 - **Rust toolchains come from each repo's `rust-toolchain.toml`.** After the
@@ -137,6 +139,26 @@ rustflags = ["-C", "debuginfo=line-tables-only", "-C", "link-arg=-fuse-ld=mold"]
 ```
 
 `debuginfo=line-tables-only` alone cut the target dir 6691 MB → 2613 MB (61%).
+
+---
+
+## The agent: omp
+
+- **Same version as the Mac.** `up` reads the local `omp --version`, downloads
+  that release's `omp-linux-x64` and installs it only if it matches the
+  release's `SHA256SUMS.txt`. Upgrade omp locally (and on the broker host)
+  first; the next `up` follows. Pi is uninstalled; `~/.pi` stays as data.
+- **Config flows one way.** `~/.omp/agent/config.yml` and `managed-skills/`
+  are rsynced up. After every sync the box re-applies what differs on Linux:
+  `isolation.backend auto` (APFS clones do not exist there) and
+  `auth.broker.url`.
+- **Credentials are never copied.** `agent.db` stays local. Both machines
+  resolve model credentials through one `omp auth-broker` on an always-on
+  tailnet host (`FROGGYBOX_AUTH_BROKER_URL`), so no two hosts ever hold the
+  same refresh token. Its bearer token, `~/.omp/auth-broker.token`, is piped
+  to the box on every sync and never appears in argv or logs.
+- **Per machine, deliberately:** sessions, blobs, history, caches and
+  `memories/` — a one-way copy of memories would overwrite what the box learns.
 
 ---
 
