@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # froggybox — one command to get a working remote omp environment on EC2.
 #
-#   froggybox up      start-or-resume, bootstrap, sync env, attach tmux agents
+#   froggybox up      start-or-resume, bootstrap, sync env, open herdr (Mac + box)
 #   froggybox down    stop the instance (EBS persists, ~$14/mo)
 #   froggybox status  state + spend
 #   froggybox ssh     plain shell on the box
@@ -38,12 +38,10 @@ for v in INSTANCE_ID KEY TS_HOST REPOS AUTH_BROKER_URL; do
 done
 REGION="${FROGGYBOX_REGION:-eu-central-1}"
 RUSER=ubuntu
-WINDOWS="${FROGGYBOX_WINDOWS:-4}"
 HOURLY=1.1664   # m8a.4xlarge eu-central-1
 SSH_ALIAS=froggybox
 TS_NAME=froggybox
 TS_AUTHKEY_FILE="${FROGGYBOX_TS_AUTHKEY:-$HOME/.config/tailscale/authkey}"
-TMUX_SESSION=froggybox
 DISPLAY_NAME="remote build box  ·  16 cores  ·  64 GB  ·  eu-central-1"
 
 SSHOPT=(-i "$KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
@@ -260,9 +258,9 @@ NET|128|46
 CACHE|96|1486|55|92
 TOP|omp|21.1|0.8|6h50m
 STALE|nextest|10800|2
-WINDOW|1|agent1|omp|0|44
-WINDOW|2|agent2|omp|0|18
-WINDOW|3|agent3|omp|1|3
+AGENT|froggy|omp|working|froggy
+AGENT|ultrapowers-pi|omp|blocked|ultrapowers-pi
+AGENT|pi-subagents|omp|idle|pi-subagents
 MISSION|feat/room-to-type|complete|9|9|0|480|3005058|15000000|-|0|refresh merge-readiness state|21600000|32400000
 MISSION|feat/the-live-wire|complete|8|8|0|840|2423540|12000000|-|0|record the-live-wire merged to main|19800000|25200000
 MISSION|feat/the-other-direction|armed|4|28|2|125|1858883|36000000|M7|14|pin M7 tests in-crate|4200000|72000000'
@@ -317,11 +315,8 @@ stale=$(ps -C cargo-nextest -o etimes= 2>/dev/null | sort -nr | head -1 | tr -d 
 printf 'STALE|nextest|%s|%s\n' "${stale:-0}" "$nextest"
 
 now=$(date +%s)
-if tmux has-session -t froggybox 2>/dev/null; then
-  tmux list-windows -t froggybox -F '#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{window_activity}' | while IFS='|' read -r idx name cmd active activity; do
-    [ -n "$activity" ] && activity_age=$((now-activity)) || activity_age=0
-    printf 'WINDOW|%s|%s|%s|%s|%s\n' "$idx" "$name" "$cmd" "$active" "$activity_age"
-  done
+if command -v herdr >/dev/null; then
+  herdr agent list 2>/dev/null | jq -r '.result.agents[]? | "AGENT|\(.name // .pane_id)|\(.agent // "-")|\(.agent_status // "unknown")|\(.cwd // "" | split("/") | last)"'
 fi
 
 for wt in "$HOME/Development/froggy" "$HOME"/Development/froggy-worktrees/*; do
@@ -502,16 +497,17 @@ if alerts: emit("ALERTS  " + "  |  ".join("! " + a for a in alerts), RED)
 else: emit("ALERTS  ✓ all nominal", GREEN)
 print()
 
-emit("AGENT WINDOWS", GREEN)
-windows = records.get("WINDOW", [])
-if not windows:
-    emit("○ no tmux session", GRAY)
+emit("AGENTS", GREEN)
+agents = records.get("AGENT", [])
+if not agents:
+    emit("○ no herdr agents", GRAY)
 else:
+    marks = {"working": ("●", CYAN), "blocked": ("◉", AMBER), "idle": ("○", GREEN), "done": ("✓", GREEN)}
     chunks = []
-    for idx, name, cmd, active, activity in windows:
-        mark = "◉" if active == "1" else "●"
-        chunks.append(f"{mark} {idx}:{name}  {cmd}  · {human_time(activity)}")
-    emit("   ".join(chunks), CYAN)
+    for name, kind, status, where in agents:
+        mark, code = marks.get(status, ("?", GRAY))
+        chunks.append(tint(f"{mark} {name}  {kind} {status}", code))
+    emit("   ".join(chunks))
 print()
 
 emit("MISSION LANES", GREEN)
@@ -530,21 +526,9 @@ for m in records.get("MISSION", []):
     budget = f" · wall {duration(elapsed_ms // 1000)} / {duration(wall_ms // 1000)}" if wall_ms else ""
     emit(f"  ↳ {human_time(age)}{budget} · {subject}", GRAY)
 print()
-emit("1-3 attach  ·  r refresh  ·  q quit  ·  Ctrl-C exit", GRAY)
+emit("r refresh  ·  q quit  ·  Ctrl-C exit", GRAY)
 PY
   [ "$TTY" = 1 ] && printf '%s[J' "$E"
-}
-
-attach_agent_window() {
-  local number="$1" host="${2:-}"
-  if [ "${FROGGYBOX_ATTACH_DRY_RUN:-0}" = 1 ]; then
-    printf '\nwould attach agent%s\n' "$number"
-    return 0
-  fi
-  [ -n "$host" ] || host=$(resolve_host)
-  _show_cursor
-  ssh -t "${SSHOPT[@]}" "$RUSER@$host" "tmux attach-session -t '$TMUX_SESSION:agent$number'"
-  _hide_cursor
 }
 
 cmd_dashboard() {
@@ -567,7 +551,6 @@ cmd_dashboard() {
     fi
     case "$key" in
       q) break ;;
-      1|2|3) attach_agent_window "$key" "${host:-}"; break ;;
       r|'') ;;
     esac
     [ "${FROGGYBOX_DASH_ONCE:-0}" = 1 ] && break
@@ -691,12 +674,15 @@ wait_for_ssh() {
 
 # Idempotent: only installs what is missing, so re-running up is cheap.
 bootstrap() {
-  local ip="$1" omp_version
+  local ip="$1" omp_version herdr_version
   # The box runs exactly the local omp: both talk to one auth broker, whose
   # protocol is versioned, and a mismatch shows up as auth failures.
   omp_version=$(omp --version 2>/dev/null | sed 's#^omp/##')
   [ -n "$omp_version" ] || die "omp is not installed locally; the box mirrors the local version"
-  ssh "${SSHOPT[@]}" "$RUSER@$ip" "OMP_VERSION=$omp_version bash -s" <<'REMOTE'
+  # herdr negotiates client/server compatibility, but lockstep keeps it boring.
+  herdr_version=$(herdr --version 2>/dev/null | awk '{print $2}')
+  [ -n "$herdr_version" ] || die "herdr is not installed locally; brew install herdr"
+  ssh "${SSHOPT[@]}" "$RUSER@$ip" "OMP_VERSION=$omp_version HERDR_VERSION=$herdr_version bash -s" <<'REMOTE'
 set -u
 export DEBIAN_FRONTEND=noninteractive
 # Command name != package name (rg -> ripgrep, fd -> fd-find). Getting this
@@ -704,7 +690,7 @@ export DEBIAN_FRONTEND=noninteractive
 # name, so a single typo silently skips every other package too.
 missing=""
 need_pkg() { command -v "$1" >/dev/null || missing="$missing $2"; }
-need_pkg git git; need_pkg curl curl; need_pkg tmux tmux; need_pkg jq jq
+need_pkg git git; need_pkg curl curl; need_pkg jq jq
 need_pkg mold mold; need_pkg clang clang
 # omp's task isolation on ext4 needs an overlay; unprivileged that means FUSE.
 need_pkg fuse-overlayfs fuse-overlayfs
@@ -762,6 +748,36 @@ npm ls -g @earendil-works/pi-coding-agent >/dev/null 2>&1 && sudo npm rm -g --si
 command -v pnpm >/dev/null || sudo npm i -g --silent pnpm
 command -v bun >/dev/null || curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1
 
+# herdr: GitHub's release-asset digest gates the install (no checksum file ships).
+if [ "$(herdr --version 2>/dev/null)" != "herdr $HERDR_VERSION" ]; then
+  url="https://github.com/herdrdev/herdr/releases/download/v$HERDR_VERSION/herdr-linux-x86_64"
+  sum=$(curl -fsSL "https://api.github.com/repos/herdrdev/herdr/releases/tags/v$HERDR_VERSION" \
+        | jq -r '.assets[] | select(.name == "herdr-linux-x86_64") | .digest // empty' | sed 's/^sha256://')
+  tmp=$(mktemp)
+  [ -n "$sum" ] && curl -fsSL -o "$tmp" "$url" && echo "$sum  $tmp" | sha256sum -c --quiet \
+    && sudo install -m755 "$tmp" /usr/local/bin/herdr
+  rm -f "$tmp"
+fi
+# The herdr server owns every pane. Lingering starts it at boot with nobody
+# logged in, so after a stop it restores the layout and resumes omp sessions.
+sudo loginctl enable-linger "$USER"
+mkdir -p ~/.config/systemd/user ~/.omp/agent
+cat > ~/.config/systemd/user/herdr.service <<'UNIT'
+[Unit]
+Description=herdr server: owns the agent panes
+
+[Service]
+Environment=SHELL=%s
+ExecStart=/usr/local/bin/herdr server
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+UNIT
+systemctl --user daemon-reload && systemctl --user enable --now herdr.service >/dev/null 2>&1
+# Reports omp state to herdr and the session id it resumes after a restart.
+herdr integration install omp >/dev/null
+
 # gh: used by the done/PR skills. Ubuntu's packaged version lags, so take the release tarball.
 GHV=$(latest_tag cli/cli); GHV=${GHV#v}
 if [ -n "$GHV" ] && [ "$(gh --version 2>/dev/null | awk 'NR==1 {print $3}')" != "$GHV" ]; then
@@ -780,7 +796,7 @@ rustflags = ["-C", "debuginfo=line-tables-only", "-C", "link-arg=-fuse-ld=mold"]
 CFG
 
 mkdir -p ~/Development
-echo "BOOTSTRAP-OK  rustc=$(rustc --version 2>/dev/null | cut -d' ' -f2) node=$(node -v 2>/dev/null) $(omp --version 2>/dev/null)"
+echo "BOOTSTRAP-OK  rustc=$(rustc --version 2>/dev/null | cut -d' ' -f2) node=$(node -v 2>/dev/null) $(omp --version 2>/dev/null) $(herdr --version 2>/dev/null)"
 REMOTE
 }
 
@@ -862,6 +878,22 @@ sync_env() {
   ok "rust" "toolchains from rust-toolchain.toml"
 }
 
+# First start only: one workspace per repo, each with an omp agent named after
+# it. From then on herdr's own snapshot restores the layout and resumes every
+# omp session, so an existing layout is never touched.
+ensure_layout() {
+  local ip="$1"
+  ssh "${SSHOPT[@]}" "$RUSER@$ip" "REPOS='$REPOS' bash -s" <<'REMOTE'
+set -u
+[ "$(herdr workspace list | jq '.result.workspaces | length')" = 0 ] || exit 0
+for r in $REPOS; do
+  [ -d ~/Development/"$r" ] || continue
+  pane=$(herdr workspace create --cwd ~/Development/"$r" --label "$r" --no-focus | jq -r '.result.root_pane.pane_id')
+  herdr agent start "$r" --kind omp --pane "$pane" --timeout 60000 >/dev/null
+done
+REMOTE
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # commands
 # ─────────────────────────────────────────────────────────────────────────────
@@ -915,37 +947,36 @@ cmd_up() {
 
   sync_env "$ip"
 
-  # Modern terminals (Ghostty, kitty, wezterm) advertise a TERM the box has
-  # never seen. ssh -t forwards it, tmux then refuses to start entirely.
+  ensure_layout "$ip"
+
+  # `froggybox ssh` still forwards TERM; teach the box this terminal so plain
+  # shell tools there render (Ghostty/kitty/wezterm are unknown to Ubuntu).
   if ! ssh "${SSHOPT[@]}" "$RUSER@$ip" "infocmp '$TERM' >/dev/null 2>&1"; then
     spin "teaching the box TERM=$TERM"
     infocmp -x "$TERM" 2>/dev/null \
       | ssh "${SSHOPT[@]}" "$RUSER@$ip" 'mkdir -p ~/.terminfo && tic -x -o ~/.terminfo - 2>/dev/null'
   fi
-  # Belt and braces: if it still is not resolvable, degrade rather than fail.
-  local rterm="$TERM"
-  ssh "${SSHOPT[@]}" "$RUSER@$ip" "infocmp '$TERM' >/dev/null 2>&1" || rterm=xterm-256color
-  ok "terminal" "$rterm"
+
+  # The box is a saved machine in the local herdr: Mac and box in one sidebar.
+  if ! herdr machine list --json 2>/dev/null | jq -e --arg l "$SSH_ALIAS" 'any(.[]; .label == $l)' >/dev/null; then
+    herdr machine add "$SSH_ALIAS" --label "$SSH_ALIAS" --remote-session default </dev/null >/dev/null 2>&1 \
+      || die "herdr machine add $SSH_ALIAS failed; run it by hand to see why"
+  fi
+  local agents
+  agents=$(herdr --machine "$SSH_ALIAS" agent list 2>/dev/null | jq '.result.agents | length')
+  ok "herdr" "${agents:-0} agents on $SSH_ALIAS"
 
   echo
   panel "ready" \
-    "$WINDOWS omp agents  ·  session '$TMUX_SESSION'" \
-    "detach: Ctrl-b d      cost: \$$HOURLY/h" \
+    "herdr: Local + $SSH_ALIAS · prefix+w switches" \
+    "detach: ctrl+b q      cost: \$$HOURLY/h" \
     "back home: froggybox fetch"
   echo
 
-  ssh -t "${SSHOPT[@]}" "$RUSER@$ip" "bash -lc '
-    export PATH=\$HOME/.cargo/bin:\$PATH
-    export TERM=$rterm
-    if ! tmux has-session -t $TMUX_SESSION 2>/dev/null; then
-      tmux new-session -d -s $TMUX_SESSION -n shell -c ~/Development/froggy
-      for i in \$(seq 1 $WINDOWS); do
-        tmux new-window -t $TMUX_SESSION -n agent\$i -c ~/Development/froggy
-        tmux send-keys -t $TMUX_SESSION:agent\$i \"omp\" C-m
-      done
-      tmux select-window -t $TMUX_SESSION:shell
-    fi
-    tmux attach -t $TMUX_SESSION'"
+  # Inside a herdr pane the box is already in the sidebar; a nested client
+  # would fight the outer one for the terminal.
+  [ "${HERDR_ENV:-}" = 1 ] && return 0
+  exec herdr
 }
 
 cmd_down() {
@@ -1052,7 +1083,7 @@ cmd_fetch() {
 cmd_help() {
   banner "$DISPLAY_NAME"
   printf '  %sUSAGE%s  froggybox <command>\n\n' "$B$FROG" "$R"
-  printf '    %sup%s          %sstart · bootstrap · sync · attach %s omp agents%s\n' "$B" "$R" "$GRAY" "$WINDOWS" "$R"
+  printf '    %sup%s          %sstart · bootstrap · sync · open herdr (Mac + box)%s\n' "$B" "$R" "$GRAY" "$R"
   printf '    %sdashboard%s   %slive machine · agents · missions%s\n' "$B" "$R" "$GRAY" "$R"
   printf '    %sstatus%s      %sstate, address and spend%s\n' "$B" "$R" "$GRAY" "$R"
   printf '    %sdown%s        %sstop the box (EBS persists, ~$14/mo)%s\n' "$B" "$R" "$GRAY" "$R"

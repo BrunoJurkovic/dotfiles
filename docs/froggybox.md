@@ -3,7 +3,7 @@
 One command to get a working remote agent environment on an EC2 build box.
 
 ```
-froggybox up          start · bootstrap · sync · attach tmux with 4 agents
+froggybox up          start · bootstrap · sync · open herdr (Mac + box)
 froggybox dashboard   live machine · agents · missions
 froggybox down        stop the box (EBS persists)
 froggybox status      state, public-ssh state, spend
@@ -14,7 +14,9 @@ froggybox breakglass  open public SSH for this IP when the tailnet is broken
 froggybox help        banner + usage
 ```
 
-Installed by `make stow` (package `froggybox/` → `~/bin/froggybox`).
+Installed by `make stow` (package `froggybox/` → `~/bin/froggybox`; package
+`herdr/` → `~/.config/herdr/config.toml`). Needs `omp`, `herdr` and
+`terminal-notifier` locally (`brew install herdr terminal-notifier`).
 
 ---
 
@@ -37,7 +39,6 @@ Optional:
 ```
 FROGGYBOX_ENV           alternative path for the file above
 FROGGYBOX_REGION        default eu-central-1
-FROGGYBOX_WINDOWS       default 4      (agent windows to spawn)
 FROGGYBOX_TS_AUTHKEY    default ~/.config/tailscale/authkey
 FROGGYBOX_NO_BANNER=1   skip the animation
 NO_COLOR=1              plain text output
@@ -72,7 +73,7 @@ Six concurrent real mission DoDs on the box: **549.6s untuned → 272.5s tuned
   MacBook (review)                    EC2 box (execute)
   ────────────────                    ─────────────────
   editor, git review      ──sync──▶   16 cores, 64 GB
-  froggybox CLI                       agents in tmux
+  froggybox CLI                       herdr server, omp agents in panes
        ▲                              repos from FROGGYBOX_REPOS
        └──────── git fetch ───────────┘
 ```
@@ -120,7 +121,7 @@ passed on a local command line.
 | Agent | **omp**, the exact local version; fuse-overlayfs for omp's task isolation |
 | Node | Node 22, npm, pnpm, bun |
 | Search | **ripgrep, fd** — what agents and skills call in plain shell commands |
-| Workflow | gh, git identity, tmux, jq, build-essential, clang |
+| Workflow | gh, git identity, herdr, jq, build-essential, clang |
 
 - **Rust toolchains come from each repo's `rust-toolchain.toml`.** After the
   repos sync, `rustup toolchain install` runs in every repo that has one, plus
@@ -162,6 +163,35 @@ rustflags = ["-C", "debuginfo=line-tables-only", "-C", "link-arg=-fuse-ld=mold"]
 
 ---
 
+## Sessions: herdr
+
+One herdr window on the Mac shows both machines: **Local** and **froggybox**
+in the sidebar, `prefix+w` (`ctrl+b w`) to switch, `ctrl+b q` to detach.
+omp always runs on the machine that owns the code; herdr only holds the
+terminals and draws them.
+
+- **Box:** `herdr server` runs as a systemd user service with lingering on,
+  so it is up from boot with nobody logged in. The omp integration
+  (`herdr integration install omp`) reports each agent's state and session
+  file to herdr.
+- **First start:** if the box has no workspaces, `up` creates one per
+  `FROGGYBOX_REPOS` entry, each with an omp agent named after the repo.
+  Agent names must match `[a-z][a-z0-9_-]{0,31}`.
+- **After a stop:** the server restores the layout from its snapshot and
+  restarts every omp pane as `omp --resume=<session>`, so conversations
+  survive `down`, the curfew and reboots. Running builds and dev servers do
+  not; those come back as fresh shells in the same directory.
+- **Mac:** `up` saves the box as a herdr machine (`herdr machine add
+  froggybox`) once, then opens `herdr`. Notifications go to Notification
+  Center via terminal-notifier when an agent on either machine finishes or
+  needs input. Inside a herdr pane `up` skips the nested client.
+- **Version:** the box installs the local herdr release, verified against
+  GitHub's sha256 digest for the asset. Update with `brew upgrade herdr`;
+  restart a server only when you want its new server-side features
+  (`herdr server stop` ends its panes).
+
+---
+
 ## Cost
 
 | state | rate |
@@ -171,8 +201,8 @@ rustflags = ["-C", "debuginfo=line-tables-only", "-C", "link-arg=-fuse-ld=mold"]
 
 The box's first-boot user-data installs a hard curfew,
 `0 3 * * * root /sbin/shutdown -h now` (03:00 UTC). Shutdown behaviour is
-`stop`, so it halts rather than terminates — but it does kill whatever is
-running in tmux at that moment.
+`stop`, so it halts rather than terminates; herdr resumes the omp sessions on
+the next `up`, but anything mid-run at 03:00 is cut off.
 
 ---
 
@@ -199,9 +229,9 @@ other package too.
 Ubuntu ships it as `fdfind`. Bootstrap symlinks it to `/usr/local/bin/fd`.
 
 **`missing or unsuitable terminal: xterm-ghostty`**
-Ghostty/kitty/wezterm advertise a `TERM` the box has never seen; `ssh -t`
-forwards it and tmux then refuses to start. `up` exports the local terminfo
-with `infocmp -x | ssh … tic -x -`, and falls back to `xterm-256color`.
+Ghostty/kitty/wezterm advertise a `TERM` the box has never seen, which breaks
+plain-shell tools under `froggybox ssh`. `up` exports the local terminfo with
+`infocmp -x | ssh … tic -x -`. herdr panes always use `xterm-256color`.
 
 **`rg` finds nothing over SSH**
 With no path argument and stdin not a TTY, ripgrep searches **stdin** rather

@@ -1,0 +1,8 @@
+# Local herdr client. Panes from saved machines (froggybox) render here with
+# these settings; server-side behaviour lives in each machine's own config.
+onboarding = false
+
+[ui.toast]
+# macOS Notification Center via terminal-notifier, so an agent on any machine
+# that finishes or waits for input shows up even when this window is hidden.
+delivery = "system"
