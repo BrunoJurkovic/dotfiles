@@ -44,6 +44,13 @@ FROGGYBOX_NO_BANNER=1   skip the animation
 NO_COLOR=1              plain text output
 ```
 
+**Private extras: `~/.config/froggybox/sync.d/`.** Tools and secrets that must
+not appear in this repo (CLIs that name a client, API keys) are executables in
+that directory. `up` and `sync` run each one locally after the sync; they reach
+the box through the `froggybox` ssh alias, and their last output line becomes
+the status line. Pipe secrets over ssh stdin into `0600` files on the box so
+they never touch argv or a log.
+
 ---
 
 ## Why this exists

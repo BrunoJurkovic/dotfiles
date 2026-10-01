@@ -876,6 +876,21 @@ sync_env() {
       (cd ~/Development/\$r && rustup toolchain install && rustup component add rustfmt clippy)
     done'" >/dev/null 2>&1
   ok "rust" "toolchains from rust-toolchain.toml"
+
+  # Private extras (tools, secrets) stay out of this public script: every
+  # executable in ~/.config/froggybox/sync.d runs here and reaches the box
+  # through the `froggybox` ssh alias. Its last output line is the summary.
+  local hook name out
+  for hook in "$HOME/.config/froggybox/sync.d"/*; do
+    [ -x "$hook" ] || continue
+    name=$(basename "$hook")
+    spin "running $name"
+    if out=$("$hook" 2>&1); then
+      ok "$name" "$(printf '%s\n' "$out" | tail -1)"
+    else
+      bad "$name" "$(printf '%s\n' "$out" | tail -1)"
+    fi
+  done
 }
 
 # First start only: one workspace per repo, each with an omp agent named after
