@@ -709,7 +709,7 @@ bootstrap() {
   # variable.
   local_tz=$(readlink /etc/localtime | sed 's#.*/zoneinfo/##')
   ssh "${SSHOPT[@]}" "$RUSER@$ip" \
-    "OMP_VERSION=$omp_version HERDR_VERSION=$herdr_version LOCAL_TZ='$local_tz' bash -s" <<'REMOTE'
+    "OMP_VERSION=$omp_version HERDR_VERSION=$herdr_version LOCAL_TZ='$local_tz' BOX_NAME=$TS_NAME bash -s" <<'REMOTE'
 set -u
 export DEBIAN_FRONTEND=noninteractive
 # Command name != package name (rg -> ripgrep, fd -> fd-find). Getting this
@@ -738,6 +738,15 @@ if [ -n "$LOCAL_TZ" ] && [ -f "/usr/share/zoneinfo/$LOCAL_TZ" ]; then
 else
   LOCAL_TZ=UTC
 fi
+# Name the box like its alias, not ip-10-…: herdr window titles and prompts
+# show it. /etc/hosts first so sudo can resolve the new name; cloud-init would
+# put the EC2 name back on the next boot unless told to keep it.
+if [ "$(hostname)" != "$BOX_NAME" ]; then
+  grep -qw "$BOX_NAME" /etc/hosts || echo "127.0.1.1 $BOX_NAME" | sudo tee -a /etc/hosts >/dev/null
+  sudo hostnamectl set-hostname "$BOX_NAME"
+fi
+[ -f /etc/cloud/cloud.cfg.d/99-froggybox-hostname.cfg ] \
+  || echo 'preserve_hostname: true' | sudo tee /etc/cloud/cloud.cfg.d/99-froggybox-hostname.cfg >/dev/null
 # Ubuntu ships fd as 'fdfind'; scripts and agents type 'fd'.
 if ! command -v fd >/dev/null && command -v fdfind >/dev/null; then
   sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd

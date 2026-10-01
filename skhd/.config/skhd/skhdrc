@@ -55,6 +55,8 @@ alt + shift - y : yabai -m space --mirror y-axis
 # ── App Launchers ──────────────────────────────────────────
 alt - y : open -na /Applications/Ghostty.app --args -e /bin/sh -c "yazi; exit"
 alt - t : open -a /Applications/Ghostty.app
+# Another herdr window: each one can sit on its own workspace (Mac or box)
+alt + shift - t : open -na /Applications/Ghostty.app --args -e /opt/homebrew/bin/herdr
 alt - d : open -a /Applications/Discord.app
 alt - c : open -a /Applications/Google\ Chrome.app
 alt - f : open -a /Applications/Figma.app

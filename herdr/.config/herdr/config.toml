@@ -2,7 +2,23 @@
 # these settings; server-side behaviour lives in each machine's own config.
 onboarding = false
 
+[keys]
+# Same prefix as tmux (C-Space); ctrl+b, herdr's default, keeps working.
+prefix = ["ctrl+space", "ctrl+b"]
+
+[theme]
+# Follow Ghostty's ANSI palette, i.e. the same Catppuccin Macchiato.
+name = "terminal"
+
+[ui]
+# Several windows, each on its own workspace: start with the sidebar folded to
+# a narrow status rail; prefix+b expands it.
+sidebar_start_collapsed = true
+# Blocked, working and done differ by shape as well as color.
+status_indicators = "symbols"
+
 [ui.toast]
-# macOS Notification Center via terminal-notifier, so an agent on any machine
-# that finishes or waits for input shows up even when this window is hidden.
+# macOS Notification Center (Script Editor via osascript while terminal-notifier
+# lacks permission), so agents that finish or wait for input show up even when
+# this window is hidden.
 delivery = "system"

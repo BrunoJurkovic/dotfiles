@@ -181,10 +181,16 @@ rustflags = ["-C", "debuginfo=line-tables-only", "-C", "link-arg=-fuse-ld=mold"]
 
 ## Sessions: herdr
 
-One herdr window on the Mac shows both machines: **Local** and **froggybox**
-in the sidebar, `prefix+w` (`ctrl+b w`) to switch, `ctrl+b q` to detach.
-omp always runs on the machine that owns the code; herdr only holds the
-terminals and draws them.
+herdr on the Mac shows both machines: **Local** and **froggybox** in the
+sidebar, `prefix+w` to switch, `prefix+q` to detach (prefix is `ctrl+space`,
+as in tmux, or `ctrl+b`). omp always runs on the machine that owns the code;
+herdr only holds the terminals and draws them.
+
+**One window per project.** Every herdr window is an independent client: each
+can sit on its own workspace, Mac or box, and yabai tiles them like any other
+Ghostty window. `alt+shift+t` (skhd) opens another one. Windows start with the
+sidebar folded to a status rail (`prefix+b` expands it); `prefix+g` jumps to
+any agent on either machine.
 
 - **Box:** `herdr server` runs as a systemd user service with lingering on,
   so it is up from boot with nobody logged in. The omp integration
@@ -200,9 +206,12 @@ terminals and draws them.
   survive `down`, the curfew and reboots. Running builds and dev servers do
   not; those come back as fresh shells in the same directory.
 - **Mac:** `up` saves the box as a herdr machine (`herdr machine add
-  froggybox`) once, then opens `herdr`. Notifications go to Notification
-  Center via terminal-notifier when an agent on either machine finishes or
-  needs input. Inside a herdr pane `up` skips the nested client.
+  froggybox`) once, then opens `herdr`. The local config
+  (`herdr/.config/herdr/config.toml`) sets the prefix, the `terminal` theme
+  (Ghostty's palette) and shape-coded agent states. Inside a herdr pane `up`
+  skips the nested client.
+- **Hostname:** bootstrap names the box `froggybox` and tells cloud-init to
+  keep it, so window titles read `froggybox: <workspace>`.
 - **Version:** the box installs the local herdr release, verified against
   GitHub's sha256 digest for the asset. Update with `brew upgrade herdr`;
   restart a server only when you want its new server-side features
