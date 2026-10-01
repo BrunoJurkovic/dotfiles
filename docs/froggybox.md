@@ -242,6 +242,14 @@ Tailscale is not running on this Mac, or the box never joined the tailnet.
 Start Tailscale here first; only if the box itself is broken, run
 `froggybox breakglass` and `up` again.
 
+**herdr shows froggybox as `Endpoint unavailable`**
+`herdr machine status froggybox` names the cause. `No ED25519 host key is
+known … strict checking` means the box's host key is missing from
+`~/.ssh/known_hosts`: herdr's background connections always check host keys
+and never prompt. `up` pins the keys (read over the tailnet) and the `Host
+froggybox` block uses the normal known_hosts file; run `froggybox up` again.
+Open herdr windows retry within 30 s.
+
 **`fetch` reports `Permission denied (publickey)`**
 The git remote must go through the `froggybox` ssh alias
 (`ssh://froggybox/home/ubuntu/Development/<repo>`): OpenSSH matches `Host`

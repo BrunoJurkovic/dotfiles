@@ -610,13 +610,12 @@ cfg, host, key, user, alias = sys.argv[1:6]
 BEGIN, END = "# >>> froggybox begin", "# <<< froggybox end"
 block = f"""{BEGIN}
 # Tailscale-stable: this address does NOT change on stop/start.
+# Host keys are pinned in ~/.ssh/known_hosts by `froggybox up`.
 Host {alias}
     HostName {host}
     User {user}
     IdentityFile {key}
     ForwardAgent yes
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
     LogLevel ERROR
     ServerAliveInterval 30
 {END}"""
@@ -630,6 +629,20 @@ else:
     text = (text.rstrip() + "\n\n" + block + "\n") if text.strip() else block + "\n"
 open(cfg, "w").write(text)
 PY
+}
+
+# The box's host keys, read over the tailnet (WireGuard has already
+# authenticated the peer), replace any older entry in ~/.ssh/known_hosts.
+# Everything that goes through the alias then verifies the box: herdr's
+# background connections refuse unknown keys outright, and a replaced box is
+# re-pinned by the next up instead of trusted blindly.
+pin_host_key() {
+  local keys kh="$HOME/.ssh/known_hosts"
+  keys=$(ssh "${SSHOPT[@]}" "$RUSER@$TS_HOST" 'cat /etc/ssh/ssh_host_*_key.pub' 2>/dev/null) || return 1
+  [ -n "$keys" ] || return 1
+  touch "$kh"; chmod 600 "$kh"
+  ssh-keygen -R "$TS_HOST" -f "$kh" >/dev/null 2>&1
+  printf '%s\n' "$keys" | awk -v h="$TS_HOST" '{print h, $1, $2}' >> "$kh"
 }
 
 sg_id() {
@@ -1068,6 +1081,11 @@ cmd_up() {
 
   ensure_tailscale "$ip"
   write_ssh_config "$TS_HOST"
+  if pin_host_key; then
+    ok "host key" "pinned for $SSH_ALIAS"
+  else
+    warn "host key" "not pinned; herdr cannot verify $SSH_ALIAS"
+  fi
 
   spin "bootstrapping toolchain"
   local bout; bout=$(bootstrap "$ip" 2>/dev/null | grep BOOTSTRAP-OK)
