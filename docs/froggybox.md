@@ -37,6 +37,8 @@ FROGGYBOX_AUTH_BROKER_URL  tailnet URL of the shared omp auth broker
 Optional:
 
 ```
+FROGGYBOX_CLONES        repos with their own remote, cloned instead of rsynced:
+                        space-separated `name=url` or `name=url#branch`
 FROGGYBOX_ENV           alternative path for the file above
 FROGGYBOX_REGION        default eu-central-1
 FROGGYBOX_TS_AUTHKEY    default ~/.config/tailscale/authkey
@@ -129,6 +131,7 @@ passed on a local command line.
 | Node | Node 22, npm, pnpm, bun |
 | Search | **ripgrep, fd** — what agents and skills call in plain shell commands |
 | Workflow | gh, git identity, herdr, jq, build-essential, clang |
+| Containers | Docker, compose, buildx; the user is in `docker` so panes reach the daemon |
 
 - **Rust toolchains come from each repo's `rust-toolchain.toml`.** After the
   repos sync, `rustup toolchain install` runs in every repo that has one, plus
@@ -187,9 +190,11 @@ terminals and draws them.
   so it is up from boot with nobody logged in. The omp integration
   (`herdr integration install omp`) reports each agent's state and session
   file to herdr.
-- **First start:** if the box has no workspaces, `up` creates one per
-  `FROGGYBOX_REPOS` entry, each with an omp agent named after the repo.
-  Agent names must match `[a-z][a-z0-9_-]{0,31}`.
+- **Workspaces:** every repo on the box (`FROGGYBOX_REPOS` plus each
+  `FROGGYBOX_CLONES` name) gets one workspace with an omp agent named after
+  it, once. `~/.config/froggybox/layout-seeded` on the box remembers which got
+  theirs, so a workspace you close stays closed. Agent names must match
+  `[a-z][a-z0-9_-]{0,31}`.
 - **After a stop:** the server restores the layout from its snapshot and
   restarts every omp pane as `omp --resume=<session>`, so conversations
   survive `down`, the curfew and reboots. Running builds and dev servers do
@@ -202,6 +207,17 @@ terminals and draws them.
   GitHub's sha256 digest for the asset. Update with `brew upgrade herdr`;
   restart a server only when you want its new server-side features
   (`herdr server stop` ends its panes).
+- **Pushing from panes:** panes reach the Mac's forwarded ssh agent through
+  herdr's stable address → `~/.ssh/agent.sock` (the unit's `SSH_AUTH_SOCK`)
+  → the newest live forwarded socket, which `~/.ssh/rc` repoints at on every
+  forwarding login once the old one has died. Ubuntu's `gpg-agent-ssh.socket`
+  is masked: it holds no keys, and herdr would otherwise bind panes to it for
+  good and every push would be denied. Pushes work while a connection that
+  forwards the agent is open (herdr's own link to the box counts).
+- **Timezone:** the box mirrors the Mac's zone as `TZ`, the way CI sets it,
+  in `/etc/environment` (SSH sessions) and the herdr unit (panes); tests that
+  depend on local time pass the same on both. The system clock stays UTC, so
+  cron, including the curfew, keeps its schedule.
 
 ---
 
@@ -267,3 +283,10 @@ git checkout -b feat/the-thing froggybox/feat/the-thing
 `git fetch` never touches your working tree, branches, or uncommitted changes.
 The reverse direction is `froggybox sync` (rsync up). You cannot `git push` to
 the box: git rejects pushes to a non-bare repo's checked-out branch.
+
+**Cloned repos** (`FROGGYBOX_CLONES`) skip all of this: the box clones them
+from their own remote with your forwarded ssh agent, later syncs only
+`git fetch`, and work goes back by pushing to that remote. Pushes from the
+box therefore need the git key loaded in the Mac's agent (`ssh-add`) while a
+connection to the box is open. Project setup that is not public (toolchains,
+`.env` files) belongs in a `sync.d` hook.

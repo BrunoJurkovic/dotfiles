@@ -33,9 +33,19 @@ TS_HOST="${FROGGYBOX_TS_HOST:-}"
 REPOS="${FROGGYBOX_REPOS:-}"
 # The shared omp auth broker (a tailnet URL) that holds every model credential.
 AUTH_BROKER_URL="${FROGGYBOX_AUTH_BROKER_URL:-}"
+# Repos that have their own git remote: cloned on the box instead of rsynced.
+# Space-separated `name=url` or `name=url#branch`. Optional.
+CLONES="${FROGGYBOX_CLONES:-}"
 for v in INSTANCE_ID KEY TS_HOST REPOS AUTH_BROKER_URL; do
   [ -n "${!v}" ] || { echo "froggybox: FROGGYBOX_$v is not set (expected in $FROGGYBOX_ENV)" >&2; exit 2; }
 done
+
+# Every repo directory on the box: rsynced REPOS plus each CLONES name.
+all_repos() {
+  local e
+  printf '%s' "$REPOS"
+  for e in $CLONES; do printf ' %s' "${e%%=*}"; done
+}
 REGION="${FROGGYBOX_REGION:-eu-central-1}"
 RUSER=ubuntu
 HOURLY=1.1664   # m8a.4xlarge eu-central-1
@@ -674,7 +684,7 @@ wait_for_ssh() {
 
 # Idempotent: only installs what is missing, so re-running up is cheap.
 bootstrap() {
-  local ip="$1" omp_version herdr_version
+  local ip="$1" omp_version herdr_version local_tz
   # The box runs exactly the local omp: both talk to one auth broker, whose
   # protocol is versioned, and a mismatch shows up as auth failures.
   omp_version=$(omp --version 2>/dev/null | sed 's#^omp/##')
@@ -682,7 +692,11 @@ bootstrap() {
   # herdr negotiates client/server compatibility, but lockstep keeps it boring.
   herdr_version=$(herdr --version 2>/dev/null | awk '{print $2}')
   [ -n "$herdr_version" ] || die "herdr is not installed locally; brew install herdr"
-  ssh "${SSHOPT[@]}" "$RUSER@$ip" "OMP_VERSION=$omp_version HERDR_VERSION=$herdr_version bash -s" <<'REMOTE'
+  # The Mac's zone: date-dependent tests assume it, as CI does with a TZ
+  # variable.
+  local_tz=$(readlink /etc/localtime | sed 's#.*/zoneinfo/##')
+  ssh "${SSHOPT[@]}" "$RUSER@$ip" \
+    "OMP_VERSION=$omp_version HERDR_VERSION=$herdr_version LOCAL_TZ='$local_tz' bash -s" <<'REMOTE'
 set -u
 export DEBIAN_FRONTEND=noninteractive
 # Command name != package name (rg -> ripgrep, fd -> fd-find). Getting this
@@ -700,6 +714,16 @@ if [ -n "$missing" ]; then
   echo "installing:$missing"
   sudo apt-get update -qq
   sudo apt-get install -y -qq build-essential pkg-config libssl-dev python3 htop unzip $missing
+fi
+# TZ like CI sets it: SSH sessions get it from /etc/environment, panes from the
+# herdr unit below. The system clock stays UTC, so cron keeps its schedule.
+if [ -n "$LOCAL_TZ" ] && [ -f "/usr/share/zoneinfo/$LOCAL_TZ" ]; then
+  if ! grep -qx "TZ=$LOCAL_TZ" /etc/environment; then
+    sudo sed -i '/^TZ=/d' /etc/environment
+    echo "TZ=$LOCAL_TZ" | sudo tee -a /etc/environment >/dev/null
+  fi
+else
+  LOCAL_TZ=UTC
 fi
 # Ubuntu ships fd as 'fdfind'; scripts and agents type 'fd'.
 if ! command -v fd >/dev/null && command -v fdfind >/dev/null; then
@@ -758,13 +782,51 @@ if [ "$(herdr --version 2>/dev/null)" != "herdr $HERDR_VERSION" ]; then
     && sudo install -m755 "$tmp" /usr/local/bin/herdr
   rm -f "$tmp"
 fi
+# Docker: compose for local services, Testcontainers for integration tests.
+docker_pkgs=""
+command -v docker >/dev/null || docker_pkgs="docker.io"
+docker compose version >/dev/null 2>&1 || docker_pkgs="$docker_pkgs docker-compose-v2"
+docker buildx version >/dev/null 2>&1 || docker_pkgs="$docker_pkgs docker-buildx"
+if [ -n "$docker_pkgs" ]; then
+  sudo apt-get update -qq && sudo apt-get install -y -qq $docker_pkgs >/dev/null
+fi
+# Pane processes inherit their groups from the systemd user manager, which read
+# them when it started. After joining `docker` it restarts (herdr with it, and
+# herdr resumes every omp session), so agents can reach the daemon.
+if ! id -nG "$USER" | grep -qw docker; then
+  sudo usermod -aG docker "$USER"
+  sudo systemctl restart "user@$(id -u).service"
+  for _ in $(seq 1 20); do systemctl --user show-environment >/dev/null 2>&1 && break; sleep 0.5; done
+fi
+
 # The herdr server owns every pane. Lingering starts it at boot with nobody
 # logged in, so after a stop it restores the layout and resumes omp sessions.
 sudo loginctl enable-linger "$USER"
-mkdir -p ~/.config/systemd/user ~/.omp/agent
+mkdir -p ~/.config/systemd/user ~/.omp/agent ~/.ssh
+# Agents push with the Mac's forwarded ssh agent. Panes outlive any one login,
+# so they use a fixed path, and every login that forwards an agent repoints it
+# once the previous target has died. Without this, panes inherit the box's own
+# empty gpg-agent from the systemd user environment and every push is denied.
+cat > ~/.ssh/rc <<'RC'
+#!/bin/sh
+# froggybox: keep ~/.ssh/agent.sock on a live forwarded agent (see herdr.service).
+if [ -S "${SSH_AUTH_SOCK:-}" ] && [ ! -S "$HOME/.ssh/agent.sock" ]; then
+  ln -sfn "$SSH_AUTH_SOCK" "$HOME/.ssh/agent.sock"
+fi
+RC
+# Ubuntu's gpg-agent also serves as an ssh agent and holds no keys here. herdr
+# keeps the first agent it bound (its herdr.sock.agent link) across restarts,
+# so after masking gpg-agent's socket the link is dropped with herdr stopped;
+# on start herdr rebinds to the unit's SSH_AUTH_SOCK. One-time.
+if [ "$(systemctl --user is-enabled gpg-agent-ssh.socket 2>/dev/null)" != masked ]; then
+  systemctl --user mask --now gpg-agent-ssh.socket >/dev/null 2>&1
+  systemctl --user unset-environment SSH_AUTH_SOCK
+  systemctl --user stop herdr.service 2>/dev/null
+  rm -f ~/.config/herdr/herdr.sock.agent
+fi
 unit=~/.config/systemd/user/herdr.service
 new=$(mktemp)
-cat > "$new" <<'UNIT'
+cat > "$new" <<UNIT
 [Unit]
 Description=herdr server: owns the agent panes
 
@@ -773,6 +835,9 @@ Environment=SHELL=%s
 # Panes inherit this: omp starts from its cached credential snapshot for a day
 # if the auth broker host is down, instead of failing after the 1 h default.
 Environment=OMP_AUTH_BROKER_SNAPSHOT_TTL_MS=86400000
+# The forwarded Mac agent (kept live by ~/.ssh/rc), not the box's gpg-agent.
+Environment=SSH_AUTH_SOCK=%h/.ssh/agent.sock
+Environment=TZ=$LOCAL_TZ
 ExecStart=/usr/local/bin/herdr server
 Restart=on-failure
 
@@ -880,11 +945,43 @@ sync_env() {
     warn "auth broker" "unreachable from the box"
   fi
 
+  # Repos with their own git remote are cloned here, not rsynced, and their
+  # work goes back through that remote. The clone uses the forwarded ssh agent;
+  # later syncs only fetch, so an agent's working tree is never touched.
+  local entry name url branch out
+  for entry in $CLONES; do
+    name=${entry%%=*}; url=${entry#*=}; branch=""
+    case "$url" in *'#'*) branch=${url##*#}; url=${url%#*} ;; esac
+    spin "cloning $name"
+    if out=$(ssh -A "${SSHOPT[@]}" "$RUSER@$ip" "NAME='$name' URL='$url' BRANCH='$branch' bash -s" 2>&1 <<'REMOTE'
+set -eu
+mkdir -p ~/.ssh
+# GitHub's host keys come from its TLS-served API, not a first-use scan.
+case "$URL" in *github.com*)
+  ssh-keygen -F github.com >/dev/null 2>&1 \
+    || curl -fsSL https://api.github.com/meta | jq -r '.ssh_keys[] | "github.com " + .' >> ~/.ssh/known_hosts ;;
+esac
+dir=~/Development/$NAME
+if [ -d "$dir/.git" ]; then
+  git -C "$dir" fetch --prune --quiet origin
+  echo "fetched · on $(git -C "$dir" branch --show-current)"
+else
+  git clone --quiet ${BRANCH:+--branch "$BRANCH"} "$URL" "$dir"
+  echo "cloned · on $(git -C "$dir" branch --show-current)"
+fi
+REMOTE
+    ); then
+      ok "$name" "$(printf '%s\n' "$out" | tail -1)"
+    else
+      bad "$name" "$(printf '%s\n' "$out" | tail -1) — is the git key loaded? ssh-add"
+    fi
+  done
+
   # rust-toolchain.toml is the only toolchain pin; install what each repo asks for.
   spin "installing rust toolchains"
   ssh "${SSHOPT[@]}" "$RUSER@$ip" "bash -lc '
     export PATH=\$HOME/.cargo/bin:\$PATH
-    for r in $REPOS; do
+    for r in $(all_repos); do
       [ -f ~/Development/\$r/rust-toolchain.toml ] || continue
       (cd ~/Development/\$r && rustup toolchain install && rustup component add rustfmt clippy)
     done'" >/dev/null 2>&1
@@ -906,18 +1003,25 @@ sync_env() {
   done
 }
 
-# First start only: one workspace per repo, each with an omp agent named after
-# it. From then on herdr's own snapshot restores the layout and resumes every
-# omp session, so an existing layout is never touched.
+# Each repo gets one workspace with an omp agent named after it, the first
+# time it is on the box. A seeded list on the box remembers which repos got
+# theirs, so a workspace you close stays closed; herdr's own snapshot restores
+# the rest and resumes every omp session.
 ensure_layout() {
   local ip="$1"
-  ssh "${SSHOPT[@]}" "$RUSER@$ip" "REPOS='$REPOS' bash -s" <<'REMOTE'
+  ssh "${SSHOPT[@]}" "$RUSER@$ip" "NAMES='$(all_repos)' bash -s" <<'REMOTE'
 set -u
-[ "$(herdr workspace list | jq '.result.workspaces | length')" = 0 ] || exit 0
-for r in $REPOS; do
+seeded=~/.config/froggybox/layout-seeded
+mkdir -p "${seeded%/*}" && touch "$seeded"
+labels=$(herdr workspace list | jq -r '.result.workspaces[].label')
+for r in $NAMES; do
+  grep -qx "$r" "$seeded" && continue
   [ -d ~/Development/"$r" ] || continue
-  pane=$(herdr workspace create --cwd ~/Development/"$r" --label "$r" --no-focus | jq -r '.result.root_pane.pane_id')
-  herdr agent start "$r" --kind omp --pane "$pane" --timeout 60000 >/dev/null
+  if ! printf '%s\n' "$labels" | grep -qx "$r"; then
+    pane=$(herdr workspace create --cwd ~/Development/"$r" --label "$r" --no-focus | jq -r '.result.root_pane.pane_id')
+    herdr agent start "$r" --kind omp --pane "$pane" --timeout 60000 >/dev/null
+  fi
+  echo "$r" >> "$seeded"
 done
 REMOTE
 }
@@ -990,8 +1094,10 @@ cmd_up() {
     herdr machine add "$SSH_ALIAS" --label "$SSH_ALIAS" --remote-session default </dev/null >/dev/null 2>&1 \
       || die "herdr machine add $SSH_ALIAS failed; run it by hand to see why"
   fi
+  # Counted on the box: the local herdr's link to it may still be reconnecting
+  # if bootstrap just restarted the box's server.
   local agents
-  agents=$(herdr --machine "$SSH_ALIAS" agent list 2>/dev/null | jq '.result.agents | length')
+  agents=$(ssh "${SSHOPT[@]}" "$RUSER@$ip" "herdr agent list | jq '.result.agents | length'" 2>/dev/null)
   ok "herdr" "${agents:-0} agents on $SSH_ALIAS"
 
   echo
