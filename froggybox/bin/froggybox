@@ -762,19 +762,32 @@ fi
 # logged in, so after a stop it restores the layout and resumes omp sessions.
 sudo loginctl enable-linger "$USER"
 mkdir -p ~/.config/systemd/user ~/.omp/agent
-cat > ~/.config/systemd/user/herdr.service <<'UNIT'
+unit=~/.config/systemd/user/herdr.service
+new=$(mktemp)
+cat > "$new" <<'UNIT'
 [Unit]
 Description=herdr server: owns the agent panes
 
 [Service]
 Environment=SHELL=%s
+# Panes inherit this: omp starts from its cached credential snapshot for a day
+# if the auth broker host is down, instead of failing after the 1 h default.
+Environment=OMP_AUTH_BROKER_SNAPSHOT_TTL_MS=86400000
 ExecStart=/usr/local/bin/herdr server
 Restart=on-failure
 
 [Install]
 WantedBy=default.target
 UNIT
-systemctl --user daemon-reload && systemctl --user enable --now herdr.service >/dev/null 2>&1
+if cmp -s "$new" "$unit"; then
+  rm -f "$new"
+else
+  # A changed unit only applies on restart; herdr resumes every omp session.
+  mv "$new" "$unit"
+  systemctl --user daemon-reload
+  systemctl --user is-active --quiet herdr.service && systemctl --user restart herdr.service
+fi
+systemctl --user enable --now herdr.service >/dev/null 2>&1
 # Reports omp state to herdr and the session id it resumes after a restart.
 herdr integration install omp >/dev/null
 
@@ -1050,6 +1063,7 @@ cmd_sync() {
   local ip; ip=$(resolve_host); [ "$ip" = "None" ] && die "not running"
   banner "syncing local environment → box"
   sync_env "$ip"
+  ensure_layout "$ip"
   echo
 }
 

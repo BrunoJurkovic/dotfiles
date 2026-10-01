@@ -165,6 +165,12 @@ rustflags = ["-C", "debuginfo=line-tables-only", "-C", "link-arg=-fuse-ld=mold"]
   tailnet host (`FROGGYBOX_AUTH_BROKER_URL`), so no two hosts ever hold the
   same refresh token. Its bearer token, `~/.omp/auth-broker.token`, is piped
   to the box on every sync and never appears in argv or logs.
+- **Broker outage.** omp keeps an encrypted snapshot of the broker's
+  credentials (`~/.omp/cache/auth-broker-snapshot.enc`). Both machines set
+  `OMP_AUTH_BROKER_SNAPSHOT_TTL_MS=86400000` (the Mac in `.zshrc`, the box in
+  the herdr unit, which every pane inherits), so omp still starts for a day
+  with the broker host down. Changing the unit restarts herdr on the next
+  `up`; omp sessions resume.
 - **Per machine, deliberately:** sessions, blobs, history, caches and
   `memories/` — a one-way copy of memories would overwrite what the box learns.
 
