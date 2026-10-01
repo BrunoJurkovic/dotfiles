@@ -112,6 +112,9 @@ alias modgen='python3 $HOME/Development/scripts/nestjs-modgen.py'
 
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000
 export RIPGREP_CONFIG_PATH="$HOME/.ripgreprc"
+# omp resolves credentials through the tailnet auth broker; if that host is
+# down, start from the encrypted cached snapshot for a day (default is 1 h).
+export OMP_AUTH_BROKER_SNAPSHOT_TTL_MS=86400000
 
 # zoxide (replaces cd) — must be last to avoid chpwd_functions being overwritten
 export _ZO_DOCTOR=0
