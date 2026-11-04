@@ -1,0 +1,88 @@
+{
+  "id": "root",
+  "type": "column",
+  "titlebar": "none",
+  "traffic_lights": [14, 13],
+  "background": "canvas",
+  "preview": "mods/board/preview.svg",
+  "resizable": false,
+  "floating": [
+    { "id": "space-colors", "content": { "mod": "space-colors" }, "edge": "bottom", "align": "end" },
+    { "id": "notify-bridge", "content": { "mod": "notify-bridge" }, "edge": "bottom", "align": "start" },
+    { "id": "herdrrc-sync", "content": { "mod": "herdrrc-sync" }, "edge": "top", "align": "end" },
+    { "id": "session-names", "content": { "mod": "session-names" }, "edge": "top", "align": "start" },
+    { "id": "usage-fetch", "content": { "mod": "usage", "props": { "role": "fetch" } }, "edge": "bottom", "align": "center" }
+  ],
+  "children": [
+    {
+      "id": "board-header",
+      "type": "block",
+      "size": { "px": 40 },
+      "window_drag": true,
+      "content": { "mod": "board", "props": { "role": "header", "inset": 84 } }
+    },
+    {
+      "id": "board-split",
+      "type": "column",
+      "divider": { "width": 1, "color": "border" },
+      "children": [
+        {
+          "id": "board-cards",
+          "type": "block",
+          "size": { "px": 290 },
+          "min": 120,
+          "max": 640,
+          "content": { "mod": "board" }
+        },
+        {
+          "id": "workspace",
+          "type": "column",
+          "resizable": false,
+          "children": [
+            {
+              "id": "board-rail",
+              "type": "block",
+              "size": { "px": 30 },
+              "content": { "mod": "board", "props": { "role": "rail" } }
+            },
+            {
+              "id": "work-body",
+              "type": "row",
+              "children": [
+                {
+                  "id": "main",
+                  "type": "block",
+                  "content": {
+                    "tab": "active",
+                    "pane": {
+                      "header": {
+                        "content": { "mod": "pane-header" },
+                        "height": 28,
+                        "position": "top",
+                        "reveal": "hover"
+                      },
+                      "background": "background",
+                      "border": { "width": 1, "color": "border" },
+                      "focus": { "width": 1, "color": "accent" },
+                      "radius": 10,
+                      "gap": 8,
+                      "lone": true
+                    }
+                  }
+                }
+              ],
+              "padding": 5,
+              "gap": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "type": "block",
+      "size": { "px": 26 },
+      "content": { "mod": "status-bar" }
+    }
+  ]
+}

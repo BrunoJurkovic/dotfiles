@@ -1,0 +1,75 @@
+#!/bin/sh
+# herdr-dev: a second Herdr window to build mods and layouts in, away from the live app. It has its
+# own home (~/.config/herdr-app-dev, fed by herdr-reload from the same package) and its own core
+# session (`dev`, with froggybox added as its own `dev` session), so probes and half-done mods never
+# reach the window you work in.
+#
+#   herdr-dev start        launch it on yabai space 5 showing `bruno` (does nothing if it runs)
+#   herdr-dev shot FILE    raise it, save a screenshot, give focus back
+#   herdr-dev cpu [N]      its CPU once a second for N seconds (default 10)
+#   herdr-dev stop         quit it and stop its cores, here and on froggybox
+#
+# The flow: `touch .hold` beside herdrrc (the live app stops taking saves), build against
+# HERDR_APP_HOME=~/.config/herdr-app-dev and HC_SESSION=dev, then `herdr-reload --deploy`,
+# remove .hold, `herdr-dev stop`.
+set -eu
+D="$HOME/.config/herdr-app-dev"
+PKG=$(dirname "$(realpath "$HOME/.config/herdr-app/herdrrc")")
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH"
+
+pid() {
+  pgrep -f 'Herdr.app/Contents/MacOS/Herdr' | while read -r p; do
+    /bin/ps -E -ww -p "$p" -o command= | grep -q "HERDR_APP_HOME=$D" && echo "$p"; done | head -1
+}
+window() { yabai -m query --windows | jq -r --argjson p "$1" '[.[] | select(.pid == $p)][0].id'; }
+app() { HERDR_APP_HOME="$D" herdr-app "$@"; }
+
+case "${1:-}" in
+  start)
+    p=$(pid)
+    if [ -z "$p" ]; then
+      mkdir -p "$D"
+      /usr/bin/open -n -a Herdr --env HERDR_APP_HOME="$D" --env HC_SESSION=dev
+      for _ in $(seq 1 60); do app status >/dev/null 2>&1 && break; sleep 0.25; done
+      p=$(pid)
+      ln -sfn "$PKG/herdrrc" "$D/herdrrc"
+      ln -sfn "$PKG/layouts.d" "$D/layouts.d"
+      HERDR_APP_HOME="$D" herdr-reload >/dev/null
+      HC_SESSION=dev hc machine ls --json | jq -e '.machines | any(.name == "froggybox")' >/dev/null \
+        || HC_SESSION=dev hc machine add froggybox --name froggybox --session dev --install </dev/null >/dev/null
+    fi
+    w=$(window "$p")
+    [ "$w" = null ] || yabai -m window "$w" --space 5 2>/dev/null || true
+    [ "$(app status | jq -r .layout)" = bruno ] || app "do" layout.switch --name bruno >/dev/null
+    echo "herdr-dev: pid $p, window $w"
+    ;;
+  shot)
+    out=${2:?usage: herdr-dev shot FILE}
+    p=$(pid)
+    [ -n "$p" ] || { echo "herdr-dev: not running (herdr-dev start)" >&2; exit 1; }
+    prev=$(yabai -m query --windows --window | jq .id)
+    yabai -m window --focus "$(window "$p")"
+    sleep 0.8
+    app shot "$out"
+    yabai -m window --focus "$prev" 2>/dev/null || true
+    ;;
+  cpu)
+    p=$(pid)
+    [ -n "$p" ] || { echo "herdr-dev: not running (herdr-dev start)" >&2; exit 1; }
+    n=${2:-10}
+    i=0
+    while [ "$i" -lt "$n" ]; do /bin/ps -o %cpu= -p "$p"; sleep 1; i=$((i + 1)); done | tr -s ' \n' ' '
+    echo
+    ;;
+  stop)
+    [ -z "$(pid)" ] || app "do" app.quit >/dev/null 2>&1 || true
+    HC_SESSION=dev hc server stop >/dev/null 2>&1 || true
+    ssh -o BatchMode=yes -o ConnectTimeout=8 froggybox \
+      'p=$(command -v herdr-core || echo ~/.local/bin/herdr-core); HC_SESSION=dev "$p" server stop' >/dev/null 2>&1 || true
+    echo "herdr-dev: stopped"
+    ;;
+  *)
+    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+    exit 2
+    ;;
+esac

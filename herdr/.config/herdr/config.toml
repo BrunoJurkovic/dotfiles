@@ -5,17 +5,76 @@ onboarding = false
 [keys]
 # Same prefix as tmux (C-Space); ctrl+b, herdr's default, keeps working.
 prefix = ["ctrl+space", "ctrl+b"]
+# Prefix-free moves on ctrl+alt, which skhd, Ghostty and macOS all leave free.
+# Same letters as the yabai bindings one modifier deeper: alt moves between
+# windows, ctrl+alt between agents.
+focus_pane_left = ["prefix+h", "ctrl+alt+h"]
+focus_pane_down = ["prefix+j", "ctrl+alt+j"]
+focus_pane_up = ["prefix+k", "ctrl+alt+k"]
+focus_pane_right = ["prefix+l", "ctrl+alt+l"]
+# Agents in sidebar order, across the Mac and froggybox.
+next_agent = "ctrl+alt+n"
+previous_agent = "ctrl+alt+p"
+focus_agent = "ctrl+alt+1..9"
+# Back and forth between the last two agents, like alt+tab between spaces.
+last_pane = "ctrl+alt+tab"
+# The agent behind the latest notification: the one asking, or just finished.
+open_notification_target = ["prefix+o", "ctrl+alt+o"]
+# Fuzzy jump by task name; b/w/i/d filter blocked/working/idle/done.
+goto = ["prefix+g", "ctrl+alt+g"]
+workspace_picker = ["prefix+w", "ctrl+alt+w"]
+previous_workspace = "ctrl+alt+["
+next_workspace = "ctrl+alt+]"
+zoom = ["prefix+z", "ctrl+alt+z"]
+split_vertical = ["prefix+v", "ctrl+alt+d"]
+split_horizontal = ["prefix+minus", "ctrl+alt+shift+d"]
+toggle_sidebar = ["prefix+b", "ctrl+alt+b"]
 
 [theme]
 # Follow Ghostty's ANSI palette, i.e. the same Catppuccin Macchiato.
-name = "terminal"
+name = "catppuccin"
 
+auto_switch = false
 [ui]
-# Several windows, each on its own workspace: start with the sidebar folded to
-# a narrow status rail; prefix+b expands it.
-sidebar_start_collapsed = true
+# One window holds every agent, so the sidebar stays open as the switchboard,
+# wide enough for omp session names.
+sidebar_width = 34
+sidebar_max_width = 40
 # Blocked, working and done differ by shape as well as color.
 status_indicators = "symbols"
+# No tabs: a workspace per agent, splits for anything beside it.
+hide_tab_bar_when_single_tab = true
+# Split borders name their agent.
+show_agent_labels_on_pane_borders = true
+# Macchiato blue: the same as space 1's window border and sketchybar's active
+# space, so focus reads one color from the bar down to the selected agent.
+accent = "#8aadf4"
+# Scroll with the wheel; the bar only cost a column.
+pane_scrollbars = false
+
+[ui.sidebar.agents]
+# The task (omp session name, reported by herdr-omp-autoname.ts) first. The
+# second line appears only when there is something to say: "blocked" in red
+# while the agent waits for you, froggybox in peach (this Mac stays unlabeled).
+rows = [
+  ["state_icon", { token = "agent", bold = true }],
+  [
+    { token = "state_text", fg = "#ed8796", bold = true, rules = [
+      { equals = "working", hide = true },
+      { equals = "idle", hide = true },
+      { equals = "done", hide = true },
+      { equals = "unknown", hide = true },
+    ] },
+    { token = "machine", fg = "#f5a97f", rules = [{ equals = "Local", hide = true }] },
+  ],
+]
+
+[ui.sidebar.spaces]
+# Several agents often share a branch; keep it quiet under the workspace name.
+rows = [
+  ["state_icon", "workspace"],
+  [{ token = "branch", dim = true }, "git_status"],
+]
 
 [ui.toast]
 # macOS Notification Center (Script Editor via osascript while terminal-notifier

@@ -43,9 +43,9 @@ make install
 1. Installs Xcode Command Line Tools
 2. Installs [Homebrew](https://brew.sh/) (if missing)
 3. Clones dotfiles to `~/.dotfiles`
-4. Runs `brew bundle` from the Brewfile
+4. Runs `brew bundle` from the Brewfile, then installs the [Herdr](https://herdr.dev/) app and herdr-core with Herdr's own installer (no Homebrew cask)
 5. Symlinks all configs via [GNU Stow](https://www.gnu.org/software/stow/) (zinit + plugins auto-install on first shell)
-7. Installs LaunchAgents (yabai, skhd, sketchybar, borders, instantspaces)
+7. Installs LaunchAgents (yabai, skhd, sketchybar, borders, instantspaces, herdr-reload)
 8. Optionally applies macOS defaults (`macos/defaults.sh`)
 
 </details>
@@ -177,6 +177,7 @@ All window management keybindings use `alt` as the modifier.
 | Key | App |
 |-----|-----|
 | `alt + t` | Ghostty |
+| `alt + shift + t` | Herdr |
 | `alt + y` | Yazi (in Ghostty) |
 | `alt + c` | Chrome |
 | `alt + d` | Discord |
@@ -195,8 +196,16 @@ All window management keybindings use `alt` as the modifier.
 | [zsh](https://www.zsh.org/) + [zinit](https://github.com/zdharma-continuum/zinit) | [`zsh/`](zsh/) | Shell with turbo-loaded plugins |
 | [Starship](https://starship.rs/) | [`starship/`](starship/) | Two-line prompt with Catppuccin palette |
 | [Ghostty](https://ghostty.org/) | [`ghostty/`](ghostty/) | GPU-accelerated terminal |
+| [Herdr](https://herdr.dev/) | [`herdr-app/`](herdr-app/) | Agent workspace: the app over herdr-core, Mac and froggybox in one window |
+| [herdr](https://herdr.dev/) TUI | [`herdr/`](herdr/) | herdr's terminal UI: `config.toml`, the `open-file-links` plugin, the omp extension that names agents after their session |
 
 **Ghostty** runs frameless at 95% opacity with background blur, GeistMono Nerd Font (14px), block cursor, and single-instance mode.
+
+**Herdr** is configured like yabai and skhd: [`herdrrc`](herdr-app/.config/herdr-app/herdrrc) is one commented shell file of `config <setting> <value>`, `bind [section] <keys> <action>`, `look <node> <field> <value>` and `space_color <repo> <colour>` lines, and it is the whole keymap. Saving it applies it: [`herdr-reload`](herdr-app/.local/bin/herdr-reload) renders it into the `settings.json` and `keys.json` the app reloads, renders the layouts in `layouts.d/` with the `look` lines applied, and stops with a notification on a bad line. Keys sit on `ctrl + alt`, skhd's `alt` one level in: `hjkl` moves between panes, `shift + hjkl` swaps them, `n`/`p` cycle agents, `1`–`9` pick a session, `g` jumps anywhere, `a` opens the launcher, `u` opens omp usage, `v` flips between the window and the agent board; `cmd + n` is the launcher too, `cmd + t` starts an omp session where you are, `cmd + w` closes it. The palette is Ghostty's Catppuccin Macchiato with SF Pro for panels, agent states use the menu bar pill's colours, and each repo keeps its colour on both machines.
+
+One session is one space is one terminal running omp. The window (`layouts.d/bruno.json`) has a sessions list on the left that collapses to a rail (each session's avatar carries the icon omp gave it, in the repo's colour, filled for the one you are in, with a state badge; spaces are named after their omp session by `session-names`, its capital tag dimmed), the focused session in the title bar, a bare terminal (headers only on splits), Files/Changes/PRs/Usage panels on the right (Usage: each account's limits with resets, in the order omp uses them, then spend by day/week/month, models, repos, Mac vs froggybox), and a status bar with what needs you, this Mac's and froggybox's load, memory and disk, and the usage chip (each Anthropic account's tightest limit). Every + and `cmd + n` open the launcher: the last six folders omp ran in on either machine as tiles, and a search over each machine's session folders, zoxide's and `~/Development` (or a typed path, or Finder's picker); ↵ starts omp there with no prompt asked, `shift + ↵` a shell. Motion is kept to what's alive: a dot wave while the focused agent works, a beam and pulse while one needs you, skeletons while panels load (`lib/motion.js`, one switch per cue). In the window, notifications are the `toast` mod's cards: an agent that needs you or finished shows as its session (avatar, tag and name, the state, repo · branch, a peach chip for froggybox), tinted by the state, with the beam while it needs you; anything else gets a tile in its level's colour; a click goes there, × dismisses. `notify-bridge` posts to Notification Center when an agent finishes or needs you while Herdr is in the background (click-to-focus needs terminal-notifier allowed in System Settings → Notifications) and pushes every change to the menu bar pill at once. Herdr draws Kitty images placed at the cursor but not ones drawn through Unicode placeholders, omp's default ([herdr-app#110](https://github.com/herdrdev/herdr-app/issues/110)), so `.zshrc` sets `PI_NO_KITTY_PLACEHOLDERS=1` where `HC_TERMINAL_ID` is set.
+
+Its mods live in [`mods/`](herdr-app/.config/herdr-app/mods/), sharing one design system in [`lib/`](herdr-app/.config/herdr-app/lib/) (tokens, state glyphs, name helpers, components, motion). Herdr loads images and hot-reloads only from real files in its home, so `herdr-reload` copies mods, `lib/` (into every mod), icons, themes and `programs.json` in rather than stow linking them, and the invisible `herdrrc-sync` mod runs it whenever the package changes. Edit them here, never in `~/.config/herdr-app`. `toast` has the name of the mod Herdr ships for notifications, and Herdr puts its own back on every start (moving ours to `toast-edited`, with a note saying so); `herdrrc-sync` then runs `herdr-reload` once, which restores ours and clears `toast-edited`. Herdr loads a fresh copy of a mod per notification, per popup and per hot reload, and its JS engine never frees a loaded module (all mods share a 256 MB heap): the toast is one file for that reason, and after a long session of saving mods Herdr slows until it is restarted (that once left the Usage panel's drawing cut off; the panel is now drawn by macOS's `jsc`, `mods/usage/render.mjs`). For bigger changes, build in [`herdr-dev`](herdr-app/.local/bin/herdr-dev)'s sandbox window (its own home and core session) with `touch .hold` beside herdrrc so the live app ignores saves, then `herdr-reload --deploy` and remove `.hold`: a mod whose render spins freezes the whole window, so never iterate on the one you work in.
 
 **Starship** renders a two-line prompt:
 
@@ -427,6 +436,8 @@ Blue       #8aadf4    Lavender  #b7bdf8    Text      #cad3f5
 ├── gh/                 # GitHub CLI config
 ├── ghostty/            # Terminal (GeistMono, 95% opacity, frameless)
 ├── git/                # Delta pager, conditional work email, global ignore + attributes
+├── herdr/              # herdr TUI: config.toml, open-file-links plugin, omp session-name extension
+├── herdr-app/          # Herdr: herdrrc (yabai-style config), layouts, mods on a shared lib/, herdr-reload, herdr-dev
 ├── lazygit/            # Git TUI config + Catppuccin theme
 ├── mise/               # Tool version manager (Node, Bun, Python)
 ├── nvim/               # Neovim (Kickstart + Lazy, 35+ plugins)

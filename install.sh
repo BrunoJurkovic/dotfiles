@@ -78,6 +78,17 @@ info "installing from Brewfile..."
 brew bundle --file="$DOTFILES/Brewfile" --no-lock --quiet
 ok "all packages installed"
 
+# ── Herdr ─────────────────────────────────────────────────
+# No Homebrew cask: Herdr's installer puts the app in ~/Applications and
+# herdr-core (hc) in ~/.local/bin; the app keeps both current after that.
+step "Herdr app + herdr-core"
+if [ -d "$HOME/Applications/Herdr.app" ] || [ -d /Applications/Herdr.app ]; then
+  ok "already installed"
+else
+  curl -fsSL https://releases.herdr.dev/app/install.sh | sh >/dev/null && ok "installed" \
+    || warn "Herdr install failed; rerun: curl -fsSL https://releases.herdr.dev/app/install.sh | sh"
+fi
+
 # ── GNU Stow ──────────────────────────────────────────────
 step "GNU Stow"
 if ! command -v stow &>/dev/null; then
@@ -115,6 +126,8 @@ STOW_PACKAGES=(
   lazygit
   ripgrep
   mise
+  herdr
+  herdr-app
 )
 
 for pkg in "${STOW_PACKAGES[@]}"; do
@@ -130,7 +143,7 @@ step "LaunchAgents"
 mkdir -p "$HOME/Library/LaunchAgents"
 for plist in "$DOTFILES/launchagents/"*.plist; do
   name=$(basename "$plist")
-  sed "s|__HOME__|$HOME|g" "$plist" > "$HOME/Library/LaunchAgents/$name"
+  sed -e "s|__HOME__|$HOME|g" -e "s|__DOTFILES__|$DOTFILES|g" "$plist" > "$HOME/Library/LaunchAgents/$name"
   ok "$name"
 done
 

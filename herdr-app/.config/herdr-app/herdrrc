@@ -1,0 +1,202 @@
+# herdrrc: the Herdr app's whole config, in the spirit of yabairc and skhdrc.
+#
+#   config <setting> <value>         settings.json (dots reach in: colors.accent)
+#   bind [section] <keys> <action>   keys.json; section: terminal, layout:<name>
+#                                    or mod:<name> (default: the whole window)
+#   look <node> <field> <value>      a field on the node with that id, in every
+#                                    layout in layouts.d (rendered into layouts/)
+#   space_color <repo> <colour>      a repo's colour, for every session in it: a
+#                                    Catppuccin Macchiato name or #rrggbb
+#
+# Values: numbers, on/off, [..] and {..} as JSON; anything else is text.
+#
+# Beside this file: layouts.d/ (layout sources), mods/, themes/, program-icons/
+# and programs.json, which herdr-reload copies into the app as real files.
+# Edit them here, never in ~/.config/herdr-app; saving any of them applies it.
+#
+# Saving applies it: herdr-reload renders this file into the files Herdr
+# reads, and Herdr reloads them within a second. What the
+# app's Settings change lasts until the next save or login, like a runtime
+# `yabai -m config`. A wrong line stops herdr-reload before anything is written
+# (Notification Center says which); run `herdr-reload` to see it in a terminal.
+#
+# This is the whole keymap: Herdr's built-in keys apply only while keys.json is
+# missing. `herdr-app commands` lists every action; send:^[b types Esc b.
+
+# ── Look ───────────────────────────────────────────────────
+# Ghostty's Catppuccin Macchiato (themes/catppuccin-macchiato.json) and font.
+config theme                       catppuccin-macchiato
+config font                        'MonaspiceNe Nerd Font Mono'
+config font_size                   13
+# The panels' text: the bar's SF Pro. Digits, timers and paths use Geist Mono
+# from the mods (lib/tokens.js MONO); terminals stay MonaspiceNe.
+config ui_font                     'SF Pro'
+
+# Every theme() role, pinned to Macchiato so no mod paints a neutral grey over
+# the base: base #24273a stays the theme's own, mantle behind the cards, crust
+# for bars and sidebars, surface0 for menus and neutral buttons, text at
+# 6 / 11 / 10 / 19 % for hover, selected, border and input.
+config colors.canvas               '#1e2030'
+config colors.chrome               '#181926'
+config colors.popover              '#363a4f'
+config colors.raised               '#363a4f'
+config colors.hover                '#cad3f510'
+config colors.selected             '#cad3f51c'
+config colors.border               '#cad3f51a'
+config colors.input                '#cad3f530'
+# Text: text, subtext0 and overlay2 (9.9 / 6.6 / 5.3 : 1 on the base).
+config colors.foreground           '#cad3f5'
+config colors.muted                '#a5adcb'
+config colors.dim                  '#939ab7'
+# Macchiato blue: space 1's window border, sketchybar's active space, the focus
+# ring and the primary button (crust ink on it).
+config colors.accent               '#8aadf4'
+config colors.accent_foreground    '#181926'
+config colors.solid                '#8aadf4'
+config colors.solid_foreground     '#181926'
+config colors.ring                 '#8aadf4'
+
+# Agent states in the bar pill's colours: red needs you, green finished, blue
+# working, overlay0 idle. Only ever for agent state (lib/state.js).
+config colors.blocked              '#ed8796'
+config colors.done                 '#a6da95'
+config colors.working              '#8aadf4'
+config colors.idle                 '#6e738d'
+
+# ── Window (layouts.d/bruno.json) ──────────────────────────
+# Ghostty: 95% opacity, 12 px padding. yabai space 1: 5 px around and between.
+look root       terminal_opacity      0.95
+look root       terminal_padding      '[12, 12]'
+look work-body  padding               5
+look work-body  gap                   5
+look main       content.pane.gap      5
+# Cards as round as sketchybar's popups.
+look main       content.pane.radius   14
+# A lone terminal has no frame or header: a hover header would cover omp's top
+# rows. pane-header already draws nothing for a tab's only pane, so `lone true`
+# (card, radius 14, accent focus ring) is one line away once a hand on the
+# pointer confirms clicks and text selection in the top 28 px of a lone
+# terminal still reach it; until then headers show on splits only.
+look main       content.pane.lone     false
+# The sessions list: 256 px open (44 px rail when collapsed), and the side
+# panel 336 px wide, so the terminal beside it keeps 332 px at 727.
+look sidebar    size                  '{"px":256}'
+look panel      size                  '{"px":336}'
+look panel      min                   300
+
+# ── Repo Colours ───────────────────────────────────────────
+# Every session in a repo wears its colour, on the Mac and froggybox alike:
+# the sessions list, the pane header, the board, as JankyBorders follows the
+# yabai space. Repos not listed get a colour from their name, so it never moves.
+space_color dotfiles         blue
+space_color froggy           green
+space_color ciak-sfa         peach
+space_color pi-subagents     mauve
+space_color ultrapowers-pi   pink
+space_color postmortem       lavender
+
+# ── Alerts ─────────────────────────────────────────────────
+# A sound when an agent needs you or finishes while you look elsewhere.
+config sounds.enabled        on
+
+# ── Focus (vim-style) ──────────────────────────────────────
+# ctrl+alt is skhd's alt one level in: alt moves between windows, ctrl+alt
+# between panes and agents, with the same letters.
+bind ctrl-alt-h              pane.go:left
+bind ctrl-alt-j              pane.go:down
+bind ctrl-alt-k              pane.go:up
+bind ctrl-alt-l              pane.go:right
+
+# ── Cycle Agents ───────────────────────────────────────────
+# In the sessions list's order, top to bottom.
+bind ctrl-alt-n              agent.next
+bind ctrl-alt-p              agent.prev
+
+# ── Launch ─────────────────────────────────────────────────
+# A new session in a folder, no prompt asked: one of the last six folders omp ran
+# in (either machine), or any folder on the Mac or froggybox. The + buttons too.
+bind ctrl-alt-a              mod.open:launch
+bind cmd-n                   mod.open:launch
+
+# ── Usage ──────────────────────────────────────────────────
+# Toggle the omp usage panel in the right-hand panel: limits per account, in the
+# order omp uses them, and spend (mods/usage; the status bar's chip opens it too).
+bind ctrl-alt-u              session-bar.usage
+
+# ── Swap Panes ─────────────────────────────────────────────
+bind ctrl-alt-shift-h        pane.swap:left
+bind ctrl-alt-shift-j        pane.swap:down
+bind ctrl-alt-shift-k        pane.swap:up
+bind ctrl-alt-shift-l        pane.swap:right
+
+# ── Layout ─────────────────────────────────────────────────
+bind ctrl-alt-d              pane.split:right
+bind ctrl-alt-shift-d        pane.split:down
+bind ctrl-alt-z              pane.zoom
+bind ctrl-alt-b              layout.toggle:sidebar
+bind cmd-shift-l             layout.switch
+
+# ── Layouts ────────────────────────────────────────────────
+# One key toggles between the two: bruno (sessions sidebar and bar) and board
+# (every agent on both machines as cards in columns, layouts.d/board.json).
+bind layout:bruno ctrl-alt-v layout.switch:board
+bind layout:board ctrl-alt-v layout.switch:bruno
+# The board has no session bar, so cmd-t (the bar's new omp session) would do
+# nothing there: it opens the launcher, as the board header's + does.
+bind layout:board cmd-t      mod.open:launch
+
+# ── Sessions ───────────────────────────────────────────────
+# One session = one space = one terminal running omp, on the Mac or froggybox.
+# The sidebar lists them in this order and numbers the first nine: ctrl+alt
+# is the vim-style set, cmd the usual one.
+for i in 1 2 3 4 5 6 7 8 9; do
+  bind ctrl-alt-$i           space.select:$i
+  bind cmd-$i                space.select:$i
+done
+bind ctrl-alt-[              space.prev
+bind ctrl-alt-]              space.next
+bind ctrl-tab                space.next
+bind ctrl-shift-tab          space.prev
+# Fuzzy jump to any session, the ones that need you first.
+bind ctrl-alt-g              mod.open:picker
+bind cmd-p                   mod.open:picker
+# A new omp session or shell: on the focused space's machine, in the focused
+# pane's folder (session-bar's commands).
+bind cmd-t                   session-bar.new-omp
+bind cmd-shift-t             session-bar.new-shell
+bind f2                      space.rename
+# Closing a session's only tab closes the session; Herdr asks first.
+bind cmd-w                   tab.close
+
+# ── Tabs ───────────────────────────────────────────────────
+# A second tab in a session is rare; this one adds it.
+bind ctrl-alt-t              tab.new
+
+# ── Panes ──────────────────────────────────────────────────
+bind cmd-d                   pane.split:right
+bind cmd-shift-d             pane.split:down
+bind cmd-shift-w             pane.close
+bind cmd-shift-enter         pane.zoom
+
+# ── App ────────────────────────────────────────────────────
+bind cmd-q                   app.quit
+bind cmd-h                   app.hide
+bind cmd-alt-h               app.hide_others
+bind cmd-shift-p             app.palette
+bind cmd-,                   app.settings
+bind cmd-/                   app.help
+bind cmd-=                   app.zoom_in
+bind cmd--                   app.zoom_out
+bind cmd-0                   app.zoom_reset
+
+# ── Terminal ───────────────────────────────────────────────
+# macOS editing keys, sent as the readline control characters.
+bind terminal cmd-c          terminal.copy
+bind terminal cmd-v          terminal.paste
+bind terminal ctrl-v         terminal.paste_image
+bind terminal alt-left       send:^[b
+bind terminal alt-right      send:^[f
+bind terminal alt-backspace  send:^W
+bind terminal cmd-left       send:^A
+bind terminal cmd-right      send:^E
+bind terminal cmd-backspace  send:^U

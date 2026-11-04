@@ -1,0 +1,199 @@
+{
+  "id": "root",
+  "cloned_from": {
+    "name": "main",
+    "version": "0.1.7"
+  },
+  "type": "column",
+  "titlebar": "none",
+  "traffic_lights": [
+    14,
+    13
+  ],
+  "background": "canvas",
+  "floating": [
+    {
+      "id": "space-colors",
+      "content": {
+        "mod": "space-colors"
+      },
+      "edge": "bottom",
+      "align": "end"
+    },
+    {
+      "id": "notify-bridge",
+      "content": {
+        "mod": "notify-bridge"
+      },
+      "edge": "bottom",
+      "align": "start"
+    },
+    {
+      "id": "herdrrc-sync",
+      "content": {
+        "mod": "herdrrc-sync"
+      },
+      "edge": "top",
+      "align": "end"
+    },
+    {
+      "id": "session-names",
+      "content": {
+        "mod": "session-names"
+      },
+      "edge": "top",
+      "align": "start"
+    },
+    {
+      "id": "usage-fetch",
+      "content": {
+        "mod": "usage",
+        "props": {
+          "role": "fetch"
+        }
+      },
+      "edge": "bottom",
+      "align": "center"
+    }
+  ],
+  "children": [
+    {
+      "id": "session-bar",
+      "type": "block",
+      "content": {
+        "mod": "session-bar",
+        "props": {
+          "inset": 84
+        }
+      },
+      "size": {
+        "px": 40
+      },
+      "window_drag": true
+    },
+    {
+      "id": "body",
+      "type": "row",
+      "divider": {
+        "width": 1,
+        "color": "border"
+      },
+      "children": [
+        {
+          "id": "sidebar",
+          "type": "column",
+          "size": {
+            "px": 256
+          },
+          "min": 44,
+          "max": 480,
+          "background": "chrome",
+          "resizable": false,
+          "children": [
+            {
+              "id": "sessions",
+              "type": "block",
+              "content": {
+                "mod": "sessions"
+              }
+            }
+          ]
+        },
+        {
+          "id": "work-body",
+          "type": "row",
+          "children": [
+            {
+              "id": "main",
+              "type": "block",
+              "content": {
+                "tab": "active",
+                "pane": {
+                  "header": {
+                    "content": {
+                      "mod": "pane-header"
+                    },
+                    "height": 28,
+                    "position": "top",
+                    "reveal": "hover"
+                  },
+                  "background": "background",
+                  "border": {
+                    "width": 1,
+                    "color": "border"
+                  },
+                  "focus": {
+                    "width": 1,
+                    "color": "accent"
+                  },
+                  "radius": 10,
+                  "gap": 8,
+                  "lone": true
+                }
+              }
+            },
+            {
+              "id": "panel",
+              "type": "column",
+              "children": [
+                {
+                  "id": "panel-body",
+                  "type": "stack",
+                  "children": [
+                    {
+                      "id": "files",
+                      "type": "block",
+                      "content": {
+                        "mod": "files-bruno"
+                      }
+                    },
+                    {
+                      "id": "changes",
+                      "type": "block",
+                      "content": {
+                        "mod": "changes-bruno"
+                      }
+                    },
+                    {
+                      "id": "prs",
+                      "type": "block",
+                      "content": {
+                        "mod": "prs"
+                      }
+                    },
+                    {
+                      "id": "usage",
+                      "type": "block",
+                      "content": {
+                        "mod": "usage"
+                      }
+                    }
+                  ],
+                  "active": "files"
+                }
+              ],
+              "size": {
+                "px": 368
+              },
+              "min": 280,
+              "max": 900,
+              "hidden": true
+            }
+          ],
+          "padding": 5,
+          "gap": 5
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "type": "block",
+      "content": {
+        "mod": "status-bar"
+      },
+      "size": {
+        "px": 26
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+# Ctrl-click on a file:// link in a pane opens it with macOS `open`, as herdr
+# already does for http(s) links. omp hyperlinks every path it prints (read,
+# grep, edit, find headers) as file://; herdr's built-in click handling only
+# opens web URLs and drops the rest.
+#
+# Link once per machine: herdr plugin link ~/.config/herdr/open-file-links
+# Links in froggybox panes resolve on the box's own herdr, where this is not
+# installed: those paths live on the box.
+id = "local.open-file-links"
+name = "Open file links"
+version = "0.1.0"
+min_herdr_version = "0.9.3"
+description = "Ctrl-click a file:// link to open it with macOS open"
+platforms = ["macos"]
+
+[[actions]]
+id = "open"
+title = "Open clicked file link"
+command = ["/bin/sh", "-c", "exec /usr/bin/open \"$HERDR_PLUGIN_CLICKED_URL\""]
+
+[[link_handlers]]
+id = "file"
+title = "Open file link"
+pattern = "^file://"
+action = "open"

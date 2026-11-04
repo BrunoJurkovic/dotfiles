@@ -1,0 +1,205 @@
+#!/bin/sh
+# herdr-reload: render herdrrc, the Herdr app's whole config, into the files
+# the app reads; the app picks them up within a second. The local.herdr-reload
+# LaunchAgent runs this on every save of herdrrc (and of the layout sources)
+# and at login. Nothing is written when a line is wrong.
+#
+#   herdrrc              settings.json, keys.json, space-colors.json
+#   layouts.d/<n>.json   layouts/<n>.json, with herdrrc's look lines applied
+#   mods/, program-icons/, themes/, programs.json
+#                        copied in as real files (see "Assets" below)
+#
+#   herdr-reload [herdrrc]
+set -eu
+
+home=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
+rc=${1:-$home/herdrrc}
+
+# A .hold file beside the package's herdrrc freezes the live app while work is
+# in progress: saves still reach a dev instance (HERDR_APP_HOME elsewhere),
+# never ~/.config/herdr-app. `herdr-reload --deploy` ships to the live app.
+if [ "${1:-}" = --deploy ]; then
+  deploy=1
+  rc=$home/herdrrc
+fi
+if [ "$home" = "$HOME/.config/herdr-app" ] && [ -z "${deploy:-}" ] && [ -e "$(dirname "$(realpath "$rc")")/.hold" ]; then
+  echo "herdr-reload: held (.hold in the package); run herdr-reload --deploy to ship"
+  exit 0
+fi
+
+# Under launchd nobody reads stderr, so a broken herdrrc also says so in
+# Notification Center.
+fail() {
+  printf 'herdr-reload: %s\n' "$*" >&2
+  [ -t 2 ] || osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title "herdrrc"' \
+    -e 'end run' "$*" >/dev/null 2>&1 || true
+  exit 1
+}
+
+[ -f "$rc" ] || fail "no $rc"
+[ -d "$home" ] || fail "no $home: open Herdr once first"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+mkdir "$work/layouts"
+for f in config keys looks space_colors ids; do : >"$work/$f"; done
+
+# The words herdrrc speaks. Each line is collected first, so a mistake
+# halfway down never leaves the app with half a config.
+config() {
+  [ $# -eq 2 ] || { echo "config takes a setting and a value: config $*" >&2; exit 1; }
+  printf '%s\t%s\n' "$1" "$2" >>"$work/config"
+}
+bind() {
+  case $# in
+    2) set -- global "$1" "$2" ;;
+    3) ;;
+    *) echo "bind takes [section] keys action: bind $*" >&2; exit 1 ;;
+  esac
+  printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"$work/keys"
+}
+look() {
+  [ $# -eq 3 ] || { echo "look takes a layout node, a field and a value: look $*" >&2; exit 1; }
+  printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"$work/looks"
+}
+space_color() {
+  [ $# -eq 2 ] || { echo "space_color takes a space name and a colour: space_color $*" >&2; exit 1; }
+  printf '%s\t%s\n' "$1" "$2" >>"$work/space_colors"
+}
+
+# shellcheck source=/dev/null
+( . "$rc" ) 2>"$work/err" || fail "$rc: $(cat "$work/err")"
+
+twice() { # twice <file> <fields> <what>: any key given twice stops the reload
+  dup=$(cut -f"$2" "$1" | sort | uniq -d | tr '\t\n' '  ')
+  [ -z "$dup" ] || fail "$3 twice: $dup"
+}
+twice "$work/config" 1 set
+twice "$work/keys" 1,2 bound
+twice "$work/looks" 1,2 "look"
+twice "$work/space_colors" 1 "space_color"
+
+# Values: numbers and on/off become JSON numbers and booleans, [..] and {..}
+# are JSON; anything else is a string.
+VALUE='def value:
+  if test("^-?[0-9]+(\\.[0-9]+)?$") then tonumber
+  elif . == "on" or . == "true" then true
+  elif . == "off" or . == "false" then false
+  elif test("^[\\[{]") then fromjson
+  else . end;'
+
+# Settings: dotted names reach into objects (colors.accent).
+jq -Rn "$VALUE"'
+  reduce (inputs | split("\t")) as [$k, $v] ({}; setpath($k | split("."); $v | value))
+' <"$work/config" >"$work/settings.json" 2>"$work/err" || fail "config: $(cat "$work/err")"
+
+# Keys: send: actions take caret notation (^[ is Esc, ^W is ctrl+w).
+jq -Rn '
+  def control:
+    gsub("\\^(?<c>[?@A-Z\\[\\\\\\]^_])"; .c | explode[0] | if . == 63 then 127 else . - 64 end | [.] | implode);
+  reduce (inputs | split("\t")) as [$s, $k, $a] ({};
+    .[$s][$k] = (if $a | startswith("send:") then $a | control else $a end))
+' <"$work/keys" >"$work/keys.json"
+
+# Space colours by space name, Catppuccin Macchiato names or #rrggbb; the
+# space-colors mod pins them on the app's spaces.
+jq -Rn '
+  {rosewater: "#f4dbd6", flamingo: "#f0c6c6", pink: "#f5bde6", mauve: "#c6a0f6", red: "#ed8796",
+   maroon: "#ee99a0", peach: "#f5a97f", yellow: "#eed49f", green: "#a6da95", teal: "#8bd5ca",
+   sky: "#91d7e3", sapphire: "#7dc4e4", blue: "#8aadf4", lavender: "#b7bdf8"} as $macchiato
+  | reduce (inputs | split("\t")) as [$n, $c] ({};
+      .[$n] = ($macchiato[$c] // if $c | test("^#[0-9a-fA-F]{6}$") then $c
+               else error("\($n): \($c) is neither a Macchiato colour nor #rrggbb") end))
+' <"$work/space_colors" >"$work/space-colors.json" 2>"$work/err" || fail "space_color $(cat "$work/err")"
+
+# Layouts: each source in layouts.d gets herdrrc's look lines, by node id
+# (look main content.pane.gap 5 sets that field on the node "main").
+jq -Rn "$VALUE"'
+  [inputs | split("\t") | {id: .[0], path: (.[1] | split(".")), value: (.[2] | value)}]
+' <"$work/looks" >"$work/looks.json" 2>"$work/err" || fail "look: $(cat "$work/err")"
+outputs="settings.json keys.json space-colors.json"
+for src in "$home"/layouts.d/*.json; do
+  [ -e "$src" ] || continue
+  name=${src##*/}
+  jq --slurpfile looks "$work/looks.json" '
+    reduce $looks[0][] as $l (.;
+      walk(if type == "object" and .id == $l.id then setpath($l.path; $l.value) else . end))
+  ' "$src" >"$work/layouts/$name" 2>"$work/err" || fail "layouts.d/$name: $(cat "$work/err")"
+  jq -r '.. | objects | .id? // empty' "$src" >>"$work/ids"
+  outputs="$outputs layouts/$name"
+done
+sort -u "$work/ids" >"$work/ids.sorted"
+unknown=$(cut -f1 "$work/looks" | sort -u | comm -23 - "$work/ids.sorted" | tr '\n' ' ')
+[ -z "$unknown" ] || fail "look: no layout in layouts.d has a node named $unknown"
+
+# Assets, copied in rather than stowed (the package's .stow-local-ignore keeps
+# stow off them): Herdr hot-reloads a mod only when a real file in its home
+# changes, and draws a mod's or a program's image only from a real file there,
+# never through a symlink out of it. Edit the package copies, then reload.
+# lib/ holds what every mod shares (tokens, the state glyphs, name helpers):
+# mods can't import each other, so each gets its own copy as ./lib/.
+pkg=$(dirname "$(realpath "$home/herdrrc")")
+copied=""
+mirror() { # mirror <from> <to> [rsync flags]: the package's <from> into the app's <to>
+  from=$1 to=$2
+  shift 2
+  [ -e "$pkg/$from" ] || return 0
+  case $to in */) mkdir -p "$home/$to" ;; esac
+  n=$(rsync -a --itemize-changes "$@" --exclude gpui-kit.d.ts --exclude jsconfig.json --exclude .DS_Store \
+    "$pkg/$from" "$home/$to" | grep -c . || true)
+  [ "$n" = 0 ] || copied="$copied ${to%/}"
+}
+# A package mod may take the name of one Herdr ships (installed.json records
+# those): `toast`, which draws every notification. Herdr puts its own copy back
+# on every start and moves the package's to <name>-edited; herdrrc-sync runs
+# this at start, so the package's copy goes back in and the moved one goes.
+shipped=$(jq -r 'keys[] | select(startswith("layout:") | not)' "$home/installed.json" 2>/dev/null || true)
+is_shipped() { printf '%s\n' "$shipped" | grep -qxF "$1"; }
+: >"$work/mods"
+for d in "$pkg"/mods/*/; do
+  [ -d "$d" ] || continue
+  name=$(basename "$d")
+  echo "$name" >>"$work/mods"
+  mirror "mods/$name/" "mods/$name/" --delete --exclude=/lib
+  mirror lib/ "mods/$name/lib/" --delete
+  is_shipped "$name" || continue
+  for moved in "$home/mods/$name-edited" "$home/mods/$name-edited-"*; do
+    [ -d "$moved" ] && rm -rf "$moved" && echo "herdr-reload: cleared mods/${moved##*/} (Herdr put its own $name back)"
+  done
+done
+mirror program-icons/ program-icons/ --delete
+mirror themes/ themes/
+mirror programs.json programs.json
+# A mod taken out of the package leaves the app too. One that has Herdr's name
+# stays until Herdr's next start brings Herdr's own back.
+if [ -f "$home/.herdr-reload-mods" ]; then
+  sort "$home/.herdr-reload-mods" >"$work/old"
+  sort "$work/mods" | comm -13 - "$work/old" | while read -r gone; do
+    if is_shipped "$gone"; then
+      echo "herdr-reload: mods/$gone left the package; Herdr's own comes back when Herdr next starts"
+      continue
+    fi
+    rm -rf "${home:?}/mods/$gone" && echo "herdr-reload: removed mods/$gone"
+  done
+fi
+cp "$work/mods" "$home/.herdr-reload-mods"
+
+# Replaced in place by rename, and only when something changed: every write
+# makes the app reload.
+changed=$copied
+for f in $outputs; do
+  cmp -s "$work/$f" "$home/$f" && continue
+  tmp=$(mktemp "$home/$(dirname "$f")/.${f##*/}.XXXXXX")
+  cat "$work/$f" >"$tmp"
+  mv "$tmp" "$home/$f"
+  changed="$changed $f"
+done
+[ -n "$changed" ] || { echo "herdr-reload: nothing changed"; exit 0; }
+echo "herdr-reload: wrote$changed"
+
+# The app checks what it loads (key names, actions, settings, layouts) and
+# keeps the last good version when one is wrong; ask it how the new files went.
+if herdr-app status >/dev/null 2>&1; then
+  sleep 1
+  errors=$(herdr-app status | jq -r '.errors[]? | if type == "string" then . else tojson end')
+  [ -z "$errors" ] || fail "Herdr kept the last good config: $errors"
+fi

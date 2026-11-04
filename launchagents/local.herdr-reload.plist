@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>local.herdr-reload</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>__HOME__/.local/bin/herdr-reload</string>
+    </array>
+
+    <!-- Saving herdrrc or a layout source applies it, like skhd reloading
+         skhdrc. herdrrc twice: the stow link, and the dotfiles file it points
+         to (edited directly); layouts.d as a folder, so new sources count. -->
+    <key>WatchPaths</key>
+    <array>
+      <string>__HOME__/.config/herdr-app/herdrrc</string>
+      <string>__DOTFILES__/herdr-app/.config/herdr-app/herdrrc</string>
+      <string>__DOTFILES__/herdr-app/.config/herdr-app/layouts.d</string>
+      <string>__DOTFILES__/herdr-app/.config/herdr-app/layouts.d/bruno.json</string>
+      <string>__DOTFILES__/herdr-app/.config/herdr-app/layouts.d/board.json</string>
+    </array>
+    <key>RunAtLoad</key><true/>
+    <!-- launchd's default 10 s would hold back a second save made right after. -->
+    <key>ThrottleInterval</key>
+    <integer>1</integer>
+
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
+    <!-- jq from Homebrew; herdr-app from ~/.local/bin -->
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>__HOME__/.local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/herdr-reload.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/herdr-reload.log</string>
+  </dict>
+</plist>

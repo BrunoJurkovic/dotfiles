@@ -1,0 +1,8 @@
+# herdr-reload copies these into ~/.config/herdr-app as real files instead:
+# Herdr hot-reloads mods and draws images only from real files in its home.
+^/\.config/herdr-app/mods
+^/\.config/herdr-app/program-icons
+^/\.config/herdr-app/themes
+^/\.config/herdr-app/programs\.json
+^/\.config/herdr-app/lib
+^/\.config/herdr-app/\.hold
