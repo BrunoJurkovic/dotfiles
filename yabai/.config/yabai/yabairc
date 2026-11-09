@@ -67,6 +67,12 @@ yabai -m signal --add event=space_changed \
     action="~/.config/yabai/border_color.sh"
 yabai -m signal --add event=window_focused \
     action="sketchybar --trigger window_focus"
+# Titles: only the focused window's (the bar shows no other), and through
+# title_trigger.sh, which lets at most one trigger through per 0.2 s. A
+# Grafana tab retitles 60+ times a second; floods like that can fill
+# sketchybar's message queues and wedge the bar.
+yabai -m signal --add event=window_title_changed active=yes \
+    action="~/.config/yabai/title_trigger.sh"
 yabai -m signal --add event=window_created \
     action="sketchybar --trigger windows_on_spaces"
 yabai -m signal --add event=window_destroyed \
